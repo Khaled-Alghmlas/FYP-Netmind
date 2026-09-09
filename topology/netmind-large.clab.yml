@@ -1,0 +1,106 @@
+name: netmind-large
+topology:
+  nodes:
+    r1:
+      kind: linux
+      image: frrouting/frr:latest
+    fw-branch1:
+      kind: linux
+      image: alpine:latest
+    switch-branch1:
+      kind: bridge
+    host-khalid:
+      kind: linux
+      image: alpine:latest
+    host-khalil:
+      kind: linux
+      image: alpine:latest
+    host-turki:
+      kind: linux
+      image: alpine:latest
+    cam-khalid:
+      kind: linux
+      image: alpine:latest
+    fw-branch2:
+      kind: linux
+      image: alpine:latest
+    hub-branch2:
+      kind: bridge
+    host-sara:
+      kind: linux
+      image: alpine:latest
+    host-omar:
+      kind: linux
+      image: alpine:latest
+    fw-branch3:
+      kind: linux
+      image: alpine:latest
+    switch-branch3:
+      kind: bridge
+    host-ahmed:
+      kind: linux
+      image: alpine:latest
+    host-fahad:
+      kind: linux
+      image: alpine:latest
+    host-noura:
+      kind: linux
+      image: alpine:latest
+    cam-ahmed:
+      kind: linux
+      image: alpine:latest
+    cam-fahad:
+      kind: linux
+      image: alpine:latest
+  links:
+  - endpoints:
+    - r1:eth1
+    - fw-branch1:eth1
+  - endpoints:
+    - fw-branch1:eth2
+    - switch-branch1:b1p1
+  - endpoints:
+    - switch-branch1:b1p2
+    - host-khalid:eth1
+  - endpoints:
+    - switch-branch1:b1p3
+    - host-khalil:eth1
+  - endpoints:
+    - switch-branch1:b1p4
+    - host-turki:eth1
+  - endpoints:
+    - switch-branch1:b1p5
+    - cam-khalid:eth1
+  - endpoints:
+    - r1:eth2
+    - fw-branch2:eth1
+  - endpoints:
+    - fw-branch2:eth2
+    - hub-branch2:b2p1
+  - endpoints:
+    - hub-branch2:b2p2
+    - host-sara:eth1
+  - endpoints:
+    - hub-branch2:b2p3
+    - host-omar:eth1
+  - endpoints:
+    - r1:eth3
+    - fw-branch3:eth1
+  - endpoints:
+    - fw-branch3:eth2
+    - switch-branch3:b3p1
+  - endpoints:
+    - switch-branch3:b3p2
+    - host-ahmed:eth1
+  - endpoints:
+    - switch-branch3:b3p3
+    - host-fahad:eth1
+  - endpoints:
+    - switch-branch3:b3p4
+    - host-noura:eth1
+  - endpoints:
+    - switch-branch3:b3p5
+    - cam-ahmed:eth1
+  - endpoints:
+    - switch-branch3:b3p6
+    - cam-fahad:eth1

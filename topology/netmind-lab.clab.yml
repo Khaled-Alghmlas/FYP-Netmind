@@ -1,0 +1,32 @@
+name: netmind-lab
+topology:
+  nodes:
+    r1:
+      kind: linux
+      image: frrouting/frr:latest
+
+    fw1:
+      kind: linux
+      image: alpine:latest
+
+    sw1:
+      kind: bridge
+
+    host-khalid:
+      kind: linux
+      image: alpine:latest
+
+    host-khalil:
+      kind: linux
+      image: alpine:latest
+
+    cam-khalid:
+      kind: linux
+      image: alpine:latest
+
+  links:
+    - endpoints: ["r1:eth1", "fw1:eth1"]
+    - endpoints: ["fw1:eth2", "sw1:eth1"]
+    - endpoints: ["sw1:eth2", "host-khalid:eth1"]
+    - endpoints: ["sw1:eth3", "host-khalil:eth1"]
+    - endpoints: ["sw1:eth4", "cam-khalid:eth1"]
