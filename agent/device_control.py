@@ -66,3 +66,15 @@ if __name__ == "__main__":
         print(power_on(target))
     elif action == "off":
         print(power_off(target))
+
+def list_devices():
+    devices = _load_registry()
+    results = []
+    for d in devices:
+        try:
+            c = _client.containers.get(d["container"])
+            state = c.status
+        except docker.errors.NotFound:
+            state = "not found"
+        results.append({"id": d["id"], "owner": d["owner"], "type": d["type"], "status": state})
+    return results

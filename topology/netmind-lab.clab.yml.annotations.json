@@ -1,0 +1,54 @@
+{
+  "freeTextAnnotations": [],
+  "freeShapeAnnotations": [],
+  "trafficRateAnnotations": [],
+  "groupStyleAnnotations": [],
+  "networkNodeAnnotations": [],
+  "nodeAnnotations": [
+    {
+      "id": "r1",
+      "position": {
+        "x": 140,
+        "y": 340
+      }
+    },
+    {
+      "id": "fw1",
+      "position": {
+        "x": 320,
+        "y": 360
+      }
+    },
+    {
+      "id": "sw1",
+      "position": {
+        "x": 480,
+        "y": 360
+      }
+    },
+    {
+      "id": "host-khalid",
+      "position": {
+        "x": 540,
+        "y": 220
+      }
+    },
+    {
+      "id": "host-khalil",
+      "position": {
+        "x": 580,
+        "y": 480
+      }
+    },
+    {
+      "id": "cam-khalid",
+      "position": {
+        "x": 640,
+        "y": 340
+      }
+    }
+  ],
+  "edgeAnnotations": [],
+  "aliasEndpointAnnotations": [],
+  "viewerSettings": {}
+}

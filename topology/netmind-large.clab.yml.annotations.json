@@ -1,0 +1,138 @@
+{
+  "freeTextAnnotations": [],
+  "freeShapeAnnotations": [],
+  "trafficRateAnnotations": [],
+  "groupStyleAnnotations": [],
+  "networkNodeAnnotations": [],
+  "nodeAnnotations": [
+    {
+      "id": "r1",
+      "position": {
+        "x": 420,
+        "y": 320
+      }
+    },
+    {
+      "id": "fw-branch1",
+      "position": {
+        "x": 260,
+        "y": 220
+      }
+    },
+    {
+      "id": "switch-branch1",
+      "position": {
+        "x": 220,
+        "y": 60
+      }
+    },
+    {
+      "id": "host-khalid",
+      "position": {
+        "x": 380,
+        "y": 120
+      }
+    },
+    {
+      "id": "host-khalil",
+      "position": {
+        "x": 340,
+        "y": -60
+      }
+    },
+    {
+      "id": "host-turki",
+      "position": {
+        "x": 240,
+        "y": -120
+      }
+    },
+    {
+      "id": "cam-khalid",
+      "position": {
+        "x": 400,
+        "y": 20
+      }
+    },
+    {
+      "id": "fw-branch2",
+      "position": {
+        "x": 600,
+        "y": 280
+      }
+    },
+    {
+      "id": "hub-branch2",
+      "position": {
+        "x": 760,
+        "y": 240
+      }
+    },
+    {
+      "id": "host-sara",
+      "position": {
+        "x": 920,
+        "y": 240
+      }
+    },
+    {
+      "id": "host-omar",
+      "position": {
+        "x": 840,
+        "y": 380
+      }
+    },
+    {
+      "id": "fw-branch3",
+      "position": {
+        "x": 320,
+        "y": 480
+      }
+    },
+    {
+      "id": "switch-branch3",
+      "position": {
+        "x": 320,
+        "y": 640
+      }
+    },
+    {
+      "id": "host-ahmed",
+      "position": {
+        "x": 260,
+        "y": 780
+      }
+    },
+    {
+      "id": "host-fahad",
+      "position": {
+        "x": 500,
+        "y": 640
+      }
+    },
+    {
+      "id": "host-noura",
+      "position": {
+        "x": 440,
+        "y": 540
+      }
+    },
+    {
+      "id": "cam-ahmed",
+      "position": {
+        "x": 400,
+        "y": 800
+      }
+    },
+    {
+      "id": "cam-fahad",
+      "position": {
+        "x": 480,
+        "y": 720
+      }
+    }
+  ],
+  "edgeAnnotations": [],
+  "aliasEndpointAnnotations": [],
+  "viewerSettings": {}
+}
