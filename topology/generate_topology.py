@@ -1,17 +1,7 @@
 #!/usr/bin/env python3
 """Generates a Containerlab topology YAML for the NetMind lab network."""
 import yaml
-
-CORE_ROUTER = "r1"
-ALPINE_IMAGE = "alpine:latest"
-FRR_IMAGE = "frrouting/frr:latest"
-
-# Each branch = one firewall + one L2 segment (switch or hub) + hosts + cameras
-BRANCHES = [
-    {"name": "branch1", "segment_type": "switch", "owners": ["khalid", "khalil", "turki"], "cameras": ["khalid"]},
-    {"name": "branch2", "segment_type": "hub",    "owners": ["sara", "omar"],               "cameras": []},
-    {"name": "branch3", "segment_type": "switch", "owners": ["ahmed", "fahad", "noura"],     "cameras": ["ahmed", "fahad"]},
-]
+from branches import CORE_ROUTER, ALPINE_IMAGE, FRR_IMAGE, BRANCHES
 
 nodes = {CORE_ROUTER: {"kind": "linux", "image": FRR_IMAGE}}
 links = []

@@ -1,0 +1,139 @@
+{
+  "devices": [
+    {
+      "id": "fw-branch1",
+      "owner": null,
+      "type": "firewall",
+      "branch": "branch1",
+      "segment": "switch-branch1",
+      "container": "clab-netmind-large-fw-branch1",
+      "ip": "172.20.20.13"
+    },
+    {
+      "id": "host-khalid",
+      "owner": "khalid",
+      "type": "host",
+      "branch": "branch1",
+      "segment": "switch-branch1",
+      "container": "clab-netmind-large-host-khalid",
+      "ip": "172.20.20.9"
+    },
+    {
+      "id": "host-khalil",
+      "owner": "khalil",
+      "type": "host",
+      "branch": "branch1",
+      "segment": "switch-branch1",
+      "container": "clab-netmind-large-host-khalil",
+      "ip": "172.20.20.21"
+    },
+    {
+      "id": "host-turki",
+      "owner": "turki",
+      "type": "host",
+      "branch": "branch1",
+      "segment": "switch-branch1",
+      "container": "clab-netmind-large-host-turki",
+      "ip": "172.20.20.20"
+    },
+    {
+      "id": "cam-khalid",
+      "owner": "khalid",
+      "type": "camera",
+      "branch": "branch1",
+      "segment": "switch-branch1",
+      "container": "clab-netmind-large-cam-khalid",
+      "ip": "172.20.20.18"
+    },
+    {
+      "id": "fw-branch2",
+      "owner": null,
+      "type": "firewall",
+      "branch": "branch2",
+      "segment": "hub-branch2",
+      "container": "clab-netmind-large-fw-branch2",
+      "ip": "172.20.20.14"
+    },
+    {
+      "id": "host-sara",
+      "owner": "sara",
+      "type": "host",
+      "branch": "branch2",
+      "segment": "hub-branch2",
+      "container": "clab-netmind-large-host-sara",
+      "ip": "172.20.20.11"
+    },
+    {
+      "id": "host-omar",
+      "owner": "omar",
+      "type": "host",
+      "branch": "branch2",
+      "segment": "hub-branch2",
+      "container": "clab-netmind-large-host-omar",
+      "ip": "172.20.20.19"
+    },
+    {
+      "id": "fw-branch3",
+      "owner": null,
+      "type": "firewall",
+      "branch": "branch3",
+      "segment": "switch-branch3",
+      "container": "clab-netmind-large-fw-branch3",
+      "ip": "172.20.20.12"
+    },
+    {
+      "id": "host-ahmed",
+      "owner": "ahmed",
+      "type": "host",
+      "branch": "branch3",
+      "segment": "switch-branch3",
+      "container": "clab-netmind-large-host-ahmed",
+      "ip": "172.20.20.17"
+    },
+    {
+      "id": "host-fahad",
+      "owner": "fahad",
+      "type": "host",
+      "branch": "branch3",
+      "segment": "switch-branch3",
+      "container": "clab-netmind-large-host-fahad",
+      "ip": "172.20.20.15"
+    },
+    {
+      "id": "host-noura",
+      "owner": "noura",
+      "type": "host",
+      "branch": "branch3",
+      "segment": "switch-branch3",
+      "container": "clab-netmind-large-host-noura",
+      "ip": "172.20.20.8"
+    },
+    {
+      "id": "cam-ahmed",
+      "owner": "ahmed",
+      "type": "camera",
+      "branch": "branch3",
+      "segment": "switch-branch3",
+      "container": "clab-netmind-large-cam-ahmed",
+      "ip": "172.20.20.16"
+    },
+    {
+      "id": "cam-fahad",
+      "owner": "fahad",
+      "type": "camera",
+      "branch": "branch3",
+      "segment": "switch-branch3",
+      "container": "clab-netmind-large-cam-fahad",
+      "ip": "172.20.20.10"
+    },
+    {
+      "id": "r1",
+      "owner": null,
+      "type": "router",
+      "branch": null,
+      "segment": null,
+      "container": "clab-netmind-large-r1",
+      "ip": "172.20.20.7"
+    }
+  ]
+}
