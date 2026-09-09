@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Containerlab
+clab-*/
+.clab.log
+
+# Secrets / env
+.env
+*.env
+network_inventory.json
+
+# OS
+.DS_Store
