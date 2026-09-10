@@ -7,7 +7,7 @@
       "branch": "branch1",
       "segment": "switch-branch1",
       "container": "clab-netmind-large-fw-branch1",
-      "ip": "172.20.20.13"
+      "ip": "172.20.20.8"
     },
     {
       "id": "host-khalid",
@@ -16,7 +16,7 @@
       "branch": "branch1",
       "segment": "switch-branch1",
       "container": "clab-netmind-large-host-khalid",
-      "ip": "172.20.20.9"
+      "ip": "172.20.20.19"
     },
     {
       "id": "host-khalil",
@@ -25,7 +25,7 @@
       "branch": "branch1",
       "segment": "switch-branch1",
       "container": "clab-netmind-large-host-khalil",
-      "ip": "172.20.20.21"
+      "ip": "172.20.20.11"
     },
     {
       "id": "host-turki",
@@ -43,7 +43,7 @@
       "branch": "branch1",
       "segment": "switch-branch1",
       "container": "clab-netmind-large-cam-khalid",
-      "ip": "172.20.20.18"
+      "ip": "172.20.20.17"
     },
     {
       "id": "fw-branch2",
@@ -52,7 +52,7 @@
       "branch": "branch2",
       "segment": "hub-branch2",
       "container": "clab-netmind-large-fw-branch2",
-      "ip": "172.20.20.14"
+      "ip": "172.20.20.13"
     },
     {
       "id": "host-sara",
@@ -61,7 +61,7 @@
       "branch": "branch2",
       "segment": "hub-branch2",
       "container": "clab-netmind-large-host-sara",
-      "ip": "172.20.20.11"
+      "ip": "172.20.20.18"
     },
     {
       "id": "host-omar",
@@ -70,7 +70,7 @@
       "branch": "branch2",
       "segment": "hub-branch2",
       "container": "clab-netmind-large-host-omar",
-      "ip": "172.20.20.19"
+      "ip": "172.20.20.10"
     },
     {
       "id": "fw-branch3",
@@ -79,7 +79,7 @@
       "branch": "branch3",
       "segment": "switch-branch3",
       "container": "clab-netmind-large-fw-branch3",
-      "ip": "172.20.20.12"
+      "ip": "172.20.20.9"
     },
     {
       "id": "host-ahmed",
@@ -88,7 +88,7 @@
       "branch": "branch3",
       "segment": "switch-branch3",
       "container": "clab-netmind-large-host-ahmed",
-      "ip": "172.20.20.17"
+      "ip": "172.20.20.21"
     },
     {
       "id": "host-fahad",
@@ -97,7 +97,7 @@
       "branch": "branch3",
       "segment": "switch-branch3",
       "container": "clab-netmind-large-host-fahad",
-      "ip": "172.20.20.15"
+      "ip": "172.20.20.7"
     },
     {
       "id": "host-noura",
@@ -106,7 +106,7 @@
       "branch": "branch3",
       "segment": "switch-branch3",
       "container": "clab-netmind-large-host-noura",
-      "ip": "172.20.20.8"
+      "ip": "172.20.20.12"
     },
     {
       "id": "cam-ahmed",
@@ -115,7 +115,7 @@
       "branch": "branch3",
       "segment": "switch-branch3",
       "container": "clab-netmind-large-cam-ahmed",
-      "ip": "172.20.20.16"
+      "ip": "172.20.20.15"
     },
     {
       "id": "cam-fahad",
@@ -124,7 +124,7 @@
       "branch": "branch3",
       "segment": "switch-branch3",
       "container": "clab-netmind-large-cam-fahad",
-      "ip": "172.20.20.10"
+      "ip": "172.20.20.14"
     },
     {
       "id": "r1",
@@ -133,7 +133,7 @@
       "branch": null,
       "segment": null,
       "container": "clab-netmind-large-r1",
-      "ip": "172.20.20.7"
+      "ip": "172.20.20.16"
     }
   ]
 }
