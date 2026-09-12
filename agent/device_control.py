@@ -40,16 +40,30 @@ def power_on(name_or_owner):
     results = []
     for d in find_devices(name_or_owner):
         c = _client.containers.get(d["container"])
-        c.start()
-        results.append(d["id"])
+        was_running = c.status == "running"
+        if not was_running:
+            c.start()
+        results.append({
+            "id": d["id"],
+            "already_in_that_state": was_running,
+            "previous_status": c.status,
+            "new_status": "running",
+        })
     return results
 
 def power_off(name_or_owner):
     results = []
     for d in find_devices(name_or_owner):
         c = _client.containers.get(d["container"])
-        c.stop()
-        results.append(d["id"])
+        was_stopped = c.status != "running"
+        if not was_stopped:
+            c.stop()
+        results.append({
+            "id": d["id"],
+            "already_in_that_state": was_stopped,
+            "previous_status": c.status,
+            "new_status": "exited",
+        })
     return results
 
 if __name__ == "__main__":
