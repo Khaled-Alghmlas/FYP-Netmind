@@ -26,6 +26,7 @@ def get_live_containers():
 def main():
     live = get_live_containers()
     devices = []
+    missing = []
 
     for idx, b in enumerate(BRANCHES, start=1):
         branch = b["name"]
@@ -42,6 +43,8 @@ def main():
                 "container": live[fw_node]["name"],
                 "ip": live[fw_node]["ipv4_address"].split("/")[0],
             })
+        else:
+            missing.append(fw_node)
 
         for owner in b["owners"]:
             node = f"host-{owner}"
@@ -55,6 +58,8 @@ def main():
                     "container": live[node]["name"],
                     "ip": live[node]["ipv4_address"].split("/")[0],
                 })
+            else:
+                missing.append(node)
 
         for owner in b["cameras"]:
             node = f"cam-{owner}"
@@ -68,6 +73,8 @@ def main():
                     "container": live[node]["name"],
                     "ip": live[node]["ipv4_address"].split("/")[0],
                 })
+            else:
+                missing.append(node)
 
     if "r1" in live:
         devices.append({
@@ -75,11 +82,21 @@ def main():
             "segment": None, "container": live["r1"]["name"],
             "ip": live["r1"]["ipv4_address"].split("/")[0],
         })
+    else:
+        missing.append("r1")
 
     with open("registry.json", "w") as f:
         json.dump({"devices": devices}, f, indent=2)
 
     print(f"Wrote {len(devices)} devices to registry.json")
+
+    if missing:
+        print(f"\nWARNING: {len(missing)} expected device(s) not found in live "
+              f"`containerlab inspect` output — they were skipped and will NOT "
+              f"appear in registry.json (NetMind won't be able to control them):")
+        for node_id in missing:
+            print(f"  - {node_id}")
+        print("Check `containerlab deploy` output / `docker ps -a` for these nodes.")
 
 if __name__ == "__main__":
     main()
