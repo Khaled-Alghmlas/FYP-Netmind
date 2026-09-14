@@ -6,7 +6,7 @@ topology:
       image: frrouting/frr:latest
     fw-branch1:
       kind: linux
-      image: alpine:latest
+      image: netmind-firewall:latest
     switch-branch1:
       kind: bridge
     host-khalid:
@@ -20,10 +20,10 @@ topology:
       image: alpine:latest
     cam-khalid:
       kind: linux
-      image: alpine:latest
+      image: netmind-camera:latest
     fw-branch2:
       kind: linux
-      image: alpine:latest
+      image: netmind-firewall:latest
     hub-branch2:
       kind: bridge
     host-sara:
@@ -34,7 +34,7 @@ topology:
       image: alpine:latest
     fw-branch3:
       kind: linux
-      image: alpine:latest
+      image: netmind-firewall:latest
     switch-branch3:
       kind: bridge
     host-ahmed:
@@ -48,10 +48,10 @@ topology:
       image: alpine:latest
     cam-ahmed:
       kind: linux
-      image: alpine:latest
+      image: netmind-camera:latest
     cam-fahad:
       kind: linux
-      image: alpine:latest
+      image: netmind-camera:latest
   links:
   - endpoints:
     - r1:eth1
