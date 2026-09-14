@@ -83,64 +83,6 @@ TOOLS = [
             "parameters": {"type": "object", "properties": {}},
         },
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_memory",
-            "description": "Get the RAM (memory) limit assigned to a device, in megabytes.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name_or_owner": {"type": "string", "description": "Device id or owner name"}
-                },
-                "required": ["name_or_owner"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "set_memory",
-            "description": "Set the RAM (memory) limit for a device, in megabytes. Applies live, no restart needed.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name_or_owner": {"type": "string", "description": "Device id or owner name"},
-                    "mb": {"type": "integer", "description": "New memory limit in megabytes (e.g. 8192 for 8GB). Docker requires a minimum of roughly 6MB."}
-                },
-                "required": ["name_or_owner", "mb"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_cpu_cores",
-            "description": "Get how many CPU cores a device is currently pinned to, and the host's total core count.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name_or_owner": {"type": "string", "description": "Device id or owner name"}
-                },
-                "required": ["name_or_owner"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "set_cpu_cores",
-            "description": "Pin a device to a specific number of CPU cores (e.g. 4 cores = cores 0-3). Applies live, no restart needed. Fails if the requested count exceeds the host's total cores.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name_or_owner": {"type": "string", "description": "Device id or owner name"},
-                    "cores": {"type": "integer", "description": "Number of CPU cores to pin the device to"}
-                },
-                "required": ["name_or_owner", "cores"],
-            },
-        },
-    },
 ]
 
 DISPATCH = {
@@ -149,10 +91,6 @@ DISPATCH = {
     "power_on": dc.power_on,
     "power_off": dc.power_off,
     "list_devices": dc.list_devices,
-    "get_memory": dc.get_memory,
-    "set_memory": dc.set_memory,
-    "get_cpu_cores": dc.get_cpu_cores,
-    "set_cpu_cores": dc.set_cpu_cores,
 }
 
 SYSTEM_PROMPT = {
