@@ -260,12 +260,15 @@ def run_query(user_input, history):
     history.append({"role": "user", "content": user_input})
 
     for _ in range(5):
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=history,
-            tools=TOOLS,
-            tool_choice="auto",
-        )
+        try:
+            response = client.chat.completions.create(
+                model=MODEL,
+                messages=history,
+                tools=TOOLS,
+                tool_choice="auto",
+            )
+        except Exception as e:
+            return f"Sorry, I hit an error talking to the model: {e}"
         msg = response.choices[0].message
         history.append(msg)
 
