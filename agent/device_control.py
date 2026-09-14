@@ -3,6 +3,7 @@
 Resolves device/owner names via registry.json, then checks or changes
 container state via the Docker SDK — this IS the on/off state we care about."""
 import json
+import re
 import docker
 from pathlib import Path
 
@@ -67,6 +68,96 @@ def power_off(name_or_owner):
             "new_status": "exited",
         })
     return results
+
+# Ports commonly worth flagging when left open to any source.
+SENSITIVE_PORTS = {22: "SSH", 23: "Telnet", 21: "FTP", 3389: "RDP"}
+
+def _parse_iptables_rules(raw_output):
+    """Parse `iptables -L INPUT -n --line-numbers` output into structured rules."""
+    lines = raw_output.strip().split("\n")
+    rules = []
+    for line in lines[2:]:  # skip "Chain INPUT..." and the header row
+        parts = line.split(None, 5)
+        if len(parts) < 5:
+            continue
+        num, target, prot, opt, source = parts[:5]
+        rest = parts[5] if len(parts) > 5 else ""
+        port = None
+        m = re.search(r"dpt:(\d+)", rest)
+        if m:
+            port = int(m.group(1))
+        rules.append({
+            "rule_num": int(num),
+            "action": target,
+            "protocol": prot,
+            "source": source,
+            "port": port,
+        })
+    return rules
+
+def _get_firewall_device(fw_id):
+    matches = [d for d in find_devices(fw_id) if d["type"] == "firewall"]
+    if not matches:
+        raise ValueError(f"'{fw_id}' is not a known firewall.")
+    return matches[0]
+
+def _run_iptables(container, args):
+    exit_code, output = container.exec_run(["iptables"] + args)
+    if exit_code != 0:
+        raise RuntimeError(f"iptables command failed: {output.decode(errors='replace').strip()}")
+    return output.decode(errors="replace")
+
+def list_firewall_rules(fw_id):
+    d = _get_firewall_device(fw_id)
+    c = _client.containers.get(d["container"])
+    raw = _run_iptables(c, ["-L", "INPUT", "-n", "--line-numbers"])
+    return {"id": d["id"], "rules": _parse_iptables_rules(raw)}
+
+def _effective_port_rules(rules):
+    """iptables is first-match-wins: for each (port, protocol), only the
+    topmost (lowest rule_num) rule is actually in effect."""
+    effective = {}
+    for r in rules:
+        if r["port"] is None:
+            continue
+        key = (r["port"], r["protocol"])
+        if key not in effective:
+            effective[key] = r
+    return effective
+
+def get_open_ports(fw_id):
+    rules = list_firewall_rules(fw_id)["rules"]
+    effective = _effective_port_rules(rules)
+    open_ports = [
+        {"port": port, "protocol": proto, "source": r["source"]}
+        for (port, proto), r in effective.items()
+        if r["action"] == "ACCEPT"
+    ]
+    return {"id": fw_id, "open_ports": open_ports}
+
+def audit_firewall(fw_id):
+    rules = list_firewall_rules(fw_id)["rules"]
+    effective = _effective_port_rules(rules)
+    findings = []
+    for (port, proto), r in effective.items():
+        if port in SENSITIVE_PORTS and r["action"] == "ACCEPT" and r["source"] in ("0.0.0.0/0", "::/0"):
+            findings.append(
+                f"Port {port} ({SENSITIVE_PORTS[port]}) is open to any source — consider restricting it."
+            )
+    return {"id": fw_id, "findings": findings, "clean": len(findings) == 0}
+
+def block_port(fw_id, port, protocol="tcp"):
+    d = _get_firewall_device(fw_id)
+    c = _client.containers.get(d["container"])
+    # Insert at the top so it takes precedence over any existing ACCEPT rule for this port.
+    _run_iptables(c, ["-I", "INPUT", "1", "-p", protocol, "--dport", str(port), "-j", "DROP"])
+    return {"id": d["id"], "port": port, "protocol": protocol, "new_action": "blocked"}
+
+def allow_port(fw_id, port, protocol="tcp"):
+    d = _get_firewall_device(fw_id)
+    c = _client.containers.get(d["container"])
+    _run_iptables(c, ["-I", "INPUT", "1", "-p", protocol, "--dport", str(port), "-j", "ACCEPT"])
+    return {"id": d["id"], "port": port, "protocol": protocol, "new_action": "allowed"}
 
 if __name__ == "__main__":
     import sys

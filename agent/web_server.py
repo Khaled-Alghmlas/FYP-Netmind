@@ -83,6 +83,80 @@ TOOLS = [
             "parameters": {"type": "object", "properties": {}},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_firewall_rules",
+            "description": "List the raw firewall rules configured on a firewall device (e.g. fw-branch1).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fw_id": {"type": "string", "description": "Firewall device id, e.g. 'fw-branch1'"}
+                },
+                "required": ["fw_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_open_ports",
+            "description": "Get which ports are currently open (allowed through) on a firewall device.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fw_id": {"type": "string", "description": "Firewall device id, e.g. 'fw-branch1'"}
+                },
+                "required": ["fw_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "audit_firewall",
+            "description": "Audit a firewall for common security issues, e.g. sensitive ports (SSH, Telnet, FTP, RDP) left open to any source.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fw_id": {"type": "string", "description": "Firewall device id, e.g. 'fw-branch1'"}
+                },
+                "required": ["fw_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "block_port",
+            "description": "Block a port on a firewall device, closing it to all traffic.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fw_id": {"type": "string", "description": "Firewall device id, e.g. 'fw-branch1'"},
+                    "port": {"type": "integer", "description": "Port number to block, e.g. 22"},
+                    "protocol": {"type": "string", "description": "Protocol, defaults to 'tcp'"}
+                },
+                "required": ["fw_id", "port"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "allow_port",
+            "description": "Allow a port on a firewall device, opening it to traffic.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fw_id": {"type": "string", "description": "Firewall device id, e.g. 'fw-branch1'"},
+                    "port": {"type": "integer", "description": "Port number to allow, e.g. 22"},
+                    "protocol": {"type": "string", "description": "Protocol, defaults to 'tcp'"}
+                },
+                "required": ["fw_id", "port"],
+            },
+        },
+    },
 ]
 
 DISPATCH = {
@@ -91,6 +165,11 @@ DISPATCH = {
     "power_on": dc.power_on,
     "power_off": dc.power_off,
     "list_devices": dc.list_devices,
+    "list_firewall_rules": dc.list_firewall_rules,
+    "get_open_ports": dc.get_open_ports,
+    "audit_firewall": dc.audit_firewall,
+    "block_port": dc.block_port,
+    "allow_port": dc.allow_port,
 }
 
 SYSTEM_PROMPT = {

@@ -3,6 +3,7 @@
 CORE_ROUTER = "r1"
 ALPINE_IMAGE = "alpine:latest"
 FRR_IMAGE = "frrouting/frr:latest"
+FIREWALL_IMAGE = "netmind-firewall:latest"
 
 BRANCHES = [
     {"name": "branch1", "segment_type": "switch", "owners": ["khalid", "khalil", "turki"], "cameras": ["khalid"]},
