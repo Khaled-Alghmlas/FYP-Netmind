@@ -96,6 +96,9 @@
 
   .msg { margin: 10px 0; padding: 10px 14px; border-radius: 14px; max-width: 78%; line-height: 1.6; }
   .msg code { background: rgba(0,0,0,0.08); padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
+  .msg-table { border-collapse: collapse; width: 100%; margin: 6px 0; font-size: 0.92em; }
+  .msg-table th, .msg-table td { border: 1px solid var(--border); padding: 6px 10px; text-align: start; }
+  .msg-table th { background: rgba(0,0,0,0.08); font-weight: 600; }
   .user { background: var(--accent); color: var(--accent-text); margin-inline-start: auto; }
   .bot { background: var(--panel); border: 1px solid var(--border); margin-inline-end: auto; }
 
@@ -225,12 +228,56 @@ document.getElementById('themeToggle').addEventListener('click', () => {
 function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
-function formatMessage(text) {
-  let safe = escapeHtml(text);
+
+function isTableRow(line) {
+  return /^\s*\|.*\|\s*$/.test(line);
+}
+function isSeparatorRow(line) {
+  return /^\s*\|[\s:|-]+\|\s*$/.test(line) && line.includes('-');
+}
+function tableCells(line) {
+  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+}
+function renderTable(lines) {
+  const header = tableCells(lines[0]);
+  const rows = lines.slice(2).map(tableCells);
+  let html = '<table class="msg-table"><thead><tr>';
+  header.forEach(h => { html += `<th>${escapeHtml(h)}</th>`; });
+  html += '</tr></thead><tbody>';
+  rows.forEach(row => {
+    html += '<tr>';
+    row.forEach(cell => { html += `<td>${escapeHtml(cell)}</td>`; });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+function formatLine(line) {
+  let safe = escapeHtml(line);
   safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
   safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  safe = safe.replace(/\n/g, '<br>');
   return safe;
+}
+function formatMessage(text) {
+  const lines = text.split('\n');
+  let html = '';
+  let i = 0;
+  while (i < lines.length) {
+    if (isTableRow(lines[i]) && lines[i + 1] !== undefined && isSeparatorRow(lines[i + 1])) {
+      const tableLines = [lines[i], lines[i + 1]];
+      let j = i + 2;
+      while (j < lines.length && isTableRow(lines[j])) {
+        tableLines.push(lines[j]);
+        j++;
+      }
+      html += renderTable(tableLines);
+      i = j;
+    } else {
+      html += formatLine(lines[i]) + '<br>';
+      i++;
+    }
+  }
+  return html;
 }
 
 function addMsg(text, cls, raw) {

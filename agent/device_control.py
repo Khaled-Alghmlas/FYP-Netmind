@@ -146,17 +146,23 @@ def audit_firewall(fw_id):
             )
     return {"id": fw_id, "findings": findings, "clean": len(findings) == 0}
 
+def _persist_rules(container):
+    exit_code, output = container.exec_run(["sh", "-c", "iptables-save > /etc/netmind-fw-rules"])
+    if exit_code != 0:
+        raise RuntimeError(f"Failed to persist firewall rules: {output.decode(errors='replace').strip()}")
+
 def block_port(fw_id, port, protocol="tcp"):
     d = _get_firewall_device(fw_id)
     c = _client.containers.get(d["container"])
-    # Insert at the top so it takes precedence over any existing ACCEPT rule for this port.
     _run_iptables(c, ["-I", "INPUT", "1", "-p", protocol, "--dport", str(port), "-j", "DROP"])
+    _persist_rules(c)
     return {"id": d["id"], "port": port, "protocol": protocol, "new_action": "blocked"}
 
 def allow_port(fw_id, port, protocol="tcp"):
     d = _get_firewall_device(fw_id)
     c = _client.containers.get(d["container"])
     _run_iptables(c, ["-I", "INPUT", "1", "-p", protocol, "--dport", str(port), "-j", "ACCEPT"])
+    _persist_rules(c)
     return {"id": d["id"], "port": port, "protocol": protocol, "new_action": "allowed"}
 
 if __name__ == "__main__":
