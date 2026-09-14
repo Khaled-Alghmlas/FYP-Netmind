@@ -3,16 +3,20 @@
 An LLM-powered network operations assistant. Query and control a simulated
 network (routers, switches/hubs, firewalls, hosts, IoT cameras) using natural
 language — e.g. "is host-ahmed on or off?", "shut off the network on khalil",
-"list all devices".
+"list all devices", "audit fw-branch1", "is cam-khalid's stream up".
 
 ## Stack
 
 - **Network emulation:** [Containerlab](https://containerlab.dev/) on native
   `docker-ce` inside a WSL2 Ubuntu distro (not Docker Desktop's own engine —
   see Setup notes below)
+- **Firewalls:** custom `netmind-firewall` image (Alpine + `iptables`) —
+  real, live firewall rules, not just a label
+- **Cameras:** custom `netmind-camera` image (Alpine + Python) — a small
+  fake HTTP service simulating a real IP camera's stream/snapshot endpoints
 - **LLM:** Groq API (`openai/gpt-oss-120b`), tool-calling
 - **Backend:** FastAPI + Docker SDK
-- **Frontend:** Vanilla JS chat UI (English/Arabic)
+- **Frontend:** Vanilla JS chat UI (English/Arabic, light/dark theme)
 
 ## Repo layout
 
@@ -23,13 +27,43 @@ build_registry.py generates registry.json (gitignored, machine-specific)
 netmind-lab.clab.yml small first topology (1 router, 1 fw, 1 switch, 2 hosts, 1 cam)
 netmind-large.clab.yml generated large topology (18 nodes / 17 links)
 agent/
-device_control.py find_devices, get_status, get_ip, power_on, power_off, list_devices
-netmind_agent.py terminal REPL agent (Groq tool calling)
+device_control.py device control + firewall auditing + camera realism functions
+netmind_agent.py terminal REPL agent (Groq tool calling, not actively used)
 web_server.py FastAPI server + chat UI (primary interface)
 web/index.html chat UI
+docker/
+firewall/ Dockerfile + entrypoint.sh for netmind-firewall image
+camera/ Dockerfile + camera_server.py + entrypoint.sh for netmind-camera image
 collectors/ reserved for future Netmiko/pysnmp deep diagnostics
-docker/ reserved for custom node Dockerfiles
 
+
+## Features
+
+**Core:** check device status/IP, power devices on/off, list all devices.
+
+**Firewall auditing** (`fw-branch1/2/3`, real `iptables` inside each) —
+- List actual firewall rules, get currently open ports
+- Audit for common misconfigurations (e.g. SSH/Telnet/FTP/RDP open to any
+  source) — the baseline config intentionally ships with SSH open, for the
+  audit tool to catch
+- Block/allow a specific port on request — changes are saved to
+  `/etc/netmind-fw-rules` inside the container and restored on the next
+  `docker start`, so they survive a normal `power_off`/`power_on` cycle
+  through NetMind. A full `containerlab destroy` + `deploy` still resets to
+  the baseline, since that recreates the container's filesystem from the
+  image.
+
+**Camera realism** (`cam-khalid`, `cam-ahmed`, `cam-fahad`) — each runs a
+small fake HTTP service (not real RTSP) with `/stream` and `/snapshot`
+endpoints, so "is this camera actually serving something" is a genuinely
+different question from "is the container running":
+- Stream status is checked via a real HTTP request from the agent to the
+  camera's IP — not just a process check inside the container
+- Start/stop the camera *service* independently of the container's power
+  state (a camera can be "on" but not streaming, same as a real device
+  whose software has crashed)
+- Check/change the camera's password — ships with a default (`admin`) for
+  the check to flag, same pattern as the firewall's open-SSH finding
 
 ## Setup
 
@@ -47,6 +81,12 @@ pip install -r requirements.txt
 4. Add a `.env` file (gitignored) at the repo root with:
 
 GROQ_API_KEY=your_key_here
+
+5. Build the custom firewall and camera images (required before first
+   deploy, and any time their Dockerfiles/scripts change):
+
+docker build -t netmind-firewall:latest docker/firewall/
+docker build -t netmind-camera:latest docker/camera/
 
 
 ### Bridge segments — manual prerequisite
