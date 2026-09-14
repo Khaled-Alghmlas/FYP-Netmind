@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generates a Containerlab topology YAML for the NetMind lab network."""
 import yaml
-from branches import CORE_ROUTER, ALPINE_IMAGE, FRR_IMAGE, FIREWALL_IMAGE, BRANCHES
+from branches import CORE_ROUTER, ALPINE_IMAGE, FRR_IMAGE, FIREWALL_IMAGE, CAMERA_IMAGE, BRANCHES
 
 nodes = {CORE_ROUTER: {"kind": "linux", "image": FRR_IMAGE}}
 links = []
@@ -28,7 +28,7 @@ for idx, b in enumerate(BRANCHES, start=1):
         seg_port += 1
     for owner in b["cameras"]:
         cam = f"cam-{owner}"
-        nodes[cam] = {"kind": "linux", "image": ALPINE_IMAGE}
+        nodes[cam] = {"kind": "linux", "image": CAMERA_IMAGE}
         links.append({"endpoints": [f"{seg}:b{idx}p{seg_port}", f"{cam}:eth1"]})
         seg_port += 1
 

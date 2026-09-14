@@ -157,6 +157,77 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_camera_stream_status",
+            "description": "Check whether a camera's video stream service is actually reachable and responding (separate from whether the container itself is powered on).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cam_id": {"type": "string", "description": "Camera device id, e.g. 'cam-khalid'"}
+                },
+                "required": ["cam_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "start_camera_stream",
+            "description": "Start a camera's video stream service, without affecting the container's power state.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cam_id": {"type": "string", "description": "Camera device id, e.g. 'cam-khalid'"}
+                },
+                "required": ["cam_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "stop_camera_stream",
+            "description": "Stop a camera's video stream service, without powering off the container.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cam_id": {"type": "string", "description": "Camera device id, e.g. 'cam-khalid'"}
+                },
+                "required": ["cam_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_camera_credentials",
+            "description": "Check whether a camera is still using its default (weak) password.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cam_id": {"type": "string", "description": "Camera device id, e.g. 'cam-khalid'"}
+                },
+                "required": ["cam_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "change_camera_credentials",
+            "description": "Change a camera's password away from the default.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cam_id": {"type": "string", "description": "Camera device id, e.g. 'cam-khalid'"},
+                    "new_password": {"type": "string", "description": "New password to set"}
+                },
+                "required": ["cam_id", "new_password"],
+            },
+        },
+    },
 ]
 
 DISPATCH = {
@@ -170,6 +241,11 @@ DISPATCH = {
     "audit_firewall": dc.audit_firewall,
     "block_port": dc.block_port,
     "allow_port": dc.allow_port,
+    "get_camera_stream_status": dc.get_camera_stream_status,
+    "start_camera_stream": dc.start_camera_stream,
+    "stop_camera_stream": dc.stop_camera_stream,
+    "check_camera_credentials": dc.check_camera_credentials,
+    "change_camera_credentials": dc.change_camera_credentials,
 }
 
 SYSTEM_PROMPT = {

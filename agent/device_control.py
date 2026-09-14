@@ -4,7 +4,9 @@ Resolves device/owner names via registry.json, then checks or changes
 container state via the Docker SDK — this IS the on/off state we care about."""
 import json
 import re
+import shlex
 import docker
+import requests
 from pathlib import Path
 
 REGISTRY_PATH = Path(__file__).resolve().parent.parent / "topology" / "registry.json"
@@ -164,6 +166,65 @@ def allow_port(fw_id, port, protocol="tcp"):
     _run_iptables(c, ["-I", "INPUT", "1", "-p", protocol, "--dport", str(port), "-j", "ACCEPT"])
     _persist_rules(c)
     return {"id": d["id"], "port": port, "protocol": protocol, "new_action": "allowed"}
+
+CAMERA_PORT = 8080
+
+def _get_camera_device(cam_id):
+    matches = [d for d in find_devices(cam_id) if d["type"] == "camera"]
+    if not matches:
+        raise ValueError(f"'{cam_id}' is not a known camera.")
+    return matches[0]
+
+def get_camera_stream_status(cam_id):
+    """Actually attempts a real HTTP request to the camera's IP - this tests
+    whether the camera service is genuinely reachable and responding, not
+    just whether the container process is alive."""
+    d = _get_camera_device(cam_id)
+    url = f"http://{d['ip']}:{CAMERA_PORT}/snapshot"
+    try:
+        resp = requests.get(url, timeout=2)
+        streaming = resp.status_code == 200
+    except requests.exceptions.RequestException:
+        streaming = False
+    return {"id": d["id"], "streaming": streaming, "url": url}
+
+def start_camera_stream(cam_id):
+    d = _get_camera_device(cam_id)
+    c = _client.containers.get(d["container"])
+    exit_code, output = c.exec_run(["/start_camera.sh"])
+    if exit_code != 0:
+        raise RuntimeError(f"Failed to start camera stream: {output.decode(errors='replace').strip()}")
+    return {"id": d["id"], "streaming": True}
+
+def stop_camera_stream(cam_id):
+    d = _get_camera_device(cam_id)
+    c = _client.containers.get(d["container"])
+    exit_code, output = c.exec_run(["/stop_camera.sh"])
+    if exit_code != 0:
+        raise RuntimeError(f"Failed to stop camera stream: {output.decode(errors='replace').strip()}")
+    return {"id": d["id"], "streaming": False}
+
+def check_camera_credentials(cam_id):
+    d = _get_camera_device(cam_id)
+    c = _client.containers.get(d["container"])
+    exit_code, output = c.exec_run(["cat", "/etc/netmind-camera-creds"])
+    if exit_code != 0:
+        raise RuntimeError(f"Failed to read camera credentials: {output.decode(errors='replace').strip()}")
+    password = output.decode(errors="replace").strip()
+    is_default = password == "admin"
+    findings = []
+    if is_default:
+        findings.append("Camera is using the default password (admin) — consider changing it.")
+    return {"id": d["id"], "using_default_credentials": is_default, "findings": findings, "clean": not is_default}
+
+def change_camera_credentials(cam_id, new_password):
+    d = _get_camera_device(cam_id)
+    c = _client.containers.get(d["container"])
+    safe_password = shlex.quote(new_password)
+    exit_code, output = c.exec_run(["sh", "-c", f"printf '%s' {safe_password} > /etc/netmind-camera-creds"])
+    if exit_code != 0:
+        raise RuntimeError(f"Failed to update camera credentials: {output.decode(errors='replace').strip()}")
+    return {"id": d["id"], "credentials_changed": True}
 
 if __name__ == "__main__":
     import sys
