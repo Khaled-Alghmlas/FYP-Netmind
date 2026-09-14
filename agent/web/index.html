@@ -84,8 +84,13 @@
     color: var(--text); line-height: 1.4; transition: border-color 0.15s;
   }
   .example:hover { border-color: var(--accent); }
+  .example:last-child:nth-child(odd) { grid-column: 1 / -1; }
 
-  #chat { flex: 1; overflow-y: auto; padding: 20px; display: none; }
+  #chat { flex: 1; overflow-y: auto; padding: 20px; display: none; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  #chat::-webkit-scrollbar { width: 8px; }
+  #chat::-webkit-scrollbar-track { background: transparent; }
+  #chat::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  #chat::-webkit-scrollbar-thumb:hover { background: var(--muted); }
   #chat.active { display: block; }
   #welcome.hidden { display: none; }
 
@@ -147,10 +152,11 @@ const STRINGS = {
     send: 'Send',
     error: 'Something went wrong connecting to the server.',
     examples: [
-      "What's khalid's IP address?",
+      "What's Khalid's IP address?",
       "List all devices",
-      "Turn off khalil's network",
-      "Is host-ahmed online?"
+      "Turn off Khalil's network",
+      "Is host-ahmed online?",
+      "What's Khalid's RAM allocation?"
     ]
   },
   ar: {
@@ -164,7 +170,8 @@ const STRINGS = {
       'وش عنوان IP لخالد؟',
       'اعرض كل الأجهزة',
       'شغّل شبكة خليل',
-      'هل host-ahmed شغال؟'
+      'هل host-ahmed شغال؟',
+      'كم الرام المخصص لخالد؟'
     ]
   }
 };
