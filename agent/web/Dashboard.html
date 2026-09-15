@@ -1,0 +1,1003 @@
+
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>NetMind Dashboard</title>
+
+    <!-- IBM Plex Sans -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <link
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <!-- Bootstrap -->
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css"
+        rel="stylesheet">
+
+    <style>
+
+        :root {
+            --bg: #FAF7F2;
+            --panel: #F0EBE3;
+            --border: #E4DDD1;
+            --text: #2B2622;
+            --muted: #8A8178;
+            --accent: #C96442;
+            --accent-text: #FFFFFF;
+            --input-bg: #FFFFFF;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'IBM Plex Sans', 'IBM Plex Sans Arabic', sans-serif;
+        }
+
+        /* ================= SIDEBAR ================= */
+
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 230px;
+            height: 100vh;
+            background: var(--panel);
+            border-right: 1px solid var(--border);
+            padding: 24px 16px;
+        }
+
+        .logo {
+            font-size: 19px;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            padding: 0 10px;
+        }
+
+        .logo span {
+            color: var(--accent);
+        }
+
+        .section-title {
+            font-size: 11px;
+            color: var(--muted);
+            text-transform: uppercase;
+            margin: 32px 10px 10px;
+            letter-spacing: 0.06em;
+        }
+
+        .nav-link {
+            color: var(--muted);
+            border-radius: 9px;
+            padding: 10px 12px;
+            margin-bottom: 3px;
+            font-size: 14px;
+            transition: 0.15s;
+        }
+
+        .nav-link:hover {
+            color: var(--text);
+            background: rgba(255,255,255,0.55);
+        }
+
+        .nav-link.active {
+            background: var(--accent);
+            color: white;
+        }
+
+        /* ================= MAIN ================= */
+
+        .main {
+            margin-left: 230px;
+            min-height: 100vh;
+        }
+
+        /* ================= HEADER ================= */
+
+        .topbar {
+            height: 72px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 28px;
+            background: rgba(250,247,242,0.9);
+        }
+
+        .page-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .page-subtitle {
+            font-size: 13px;
+            color: var(--muted);
+            margin-top: 2px;
+        }
+
+        .online {
+            color: #5f8068;
+            background: #e8f0e8;
+            padding: 6px 11px;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+
+        .avatar {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        /* ================= CONTENT ================= */
+
+        .content {
+            padding: 28px;
+        }
+
+        /* ================= CARDS ================= */
+
+        .card-custom {
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            box-shadow: none;
+        }
+
+        .stat-card {
+            padding: 20px;
+        }
+
+        .stat-label {
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .stat-value {
+            font-size: 25px;
+            font-weight: 600;
+            margin: 7px 0;
+        }
+
+        .stat-small {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .accent {
+            color: var(--accent);
+        }
+
+        /* ================= SECTION HEADER ================= */
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 18px;
+        }
+
+        .section-header h5 {
+            font-size: 15px;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .section-header p {
+            color: var(--muted);
+            font-size: 12px;
+            margin: 4px 0 0;
+        }
+
+        /* ================= BUTTONS ================= */
+
+        .btn-netmind {
+            background: var(--accent);
+            border: none;
+            color: white;
+            border-radius: 8px;
+            padding: 8px 14px;
+            font-size: 13px;
+        }
+
+        .btn-netmind:hover {
+            background: #b95738;
+            color: white;
+        }
+
+        .btn-light-netmind {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 8px;
+            padding: 7px 12px;
+            font-size: 12px;
+        }
+
+        .btn-light-netmind:hover {
+            background: var(--panel);
+        }
+
+        /* ================= NETWORK ================= */
+
+        .network {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            min-height: 290px;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .node {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            padding: 10px 18px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .node-main {
+            border-color: var(--accent);
+        }
+
+        .node-warning {
+            border-color: #d99a62;
+        }
+
+        .connection {
+            width: 1px;
+            height: 28px;
+            background: var(--border);
+        }
+
+        .nodes {
+            display: flex;
+            gap: 14px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        /* ================= ALERTS ================= */
+
+        .alert-item {
+            padding: 13px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .alert-item:last-child {
+            border-bottom: none;
+        }
+
+        .alert-title {
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .alert-time {
+            color: var(--muted);
+            font-size: 11px;
+            margin-top: 3px;
+        }
+
+        .dot {
+            width: 7px;
+            height: 7px;
+            background: var(--accent);
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 7px;
+        }
+
+        /* ================= TABLE ================= */
+
+        .table {
+            margin: 0;
+            color: var(--text);
+        }
+
+        .table th {
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 500;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .table td {
+            font-size: 13px;
+            border-bottom: 1px solid #eee8e0;
+            padding: 14px 8px;
+        }
+
+        .status {
+            padding: 5px 9px;
+            border-radius: 20px;
+            font-size: 11px;
+        }
+
+        .status-online {
+            background: #e8f0e8;
+            color: #5f8068;
+        }
+
+        .status-warning {
+            background: #f8eadb;
+            color: #a96835;
+        }
+
+        .status-offline {
+            background: #f4e1dd;
+            color: #a85b4b;
+        }
+
+        /* ================= AI ================= */
+
+        .ai-box {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 18px;
+        }
+
+        .ai-icon {
+            width: 34px;
+            height: 34px;
+            background: var(--accent);
+            color: white;
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .ai-text {
+            font-size: 13px;
+            line-height: 1.6;
+            color: var(--text);
+        }
+
+        /* ================= RESPONSIVE ================= */
+
+        @media (max-width: 900px) {
+
+            .sidebar {
+                width: 70px;
+                padding: 20px 8px;
+            }
+
+            .logo {
+                font-size: 0;
+                text-align: center;
+            }
+
+            .logo span {
+                font-size: 18px;
+            }
+
+            .nav-link {
+                text-align: center;
+                font-size: 0;
+            }
+
+            .main {
+                margin-left: 70px;
+            }
+
+            .section-title {
+                display: none;
+            }
+
+        }
+
+    </style>
+</head>
+
+
+<body>
+
+
+<!-- ================= SIDEBAR ================= -->
+
+<aside class="sidebar">
+
+    <div class="logo">
+        NetMind <span>AI</span>
+    </div>
+
+
+    <div class="section-title">
+        Overview
+    </div>
+
+    <nav>
+
+        <a href="#" class="nav-link active">
+            Dashboard
+        </a>
+
+        <a href="#" class="nav-link">
+            Network
+        </a>
+
+        <a href="#" class="nav-link">
+            Devices
+        </a>
+
+        <a href="#" class="nav-link">
+            Alerts
+        </a>
+
+        <a href="#" class="nav-link">
+            Logs
+        </a>
+
+    </nav>
+
+
+    <div class="section-title">
+        Intelligence
+    </div>
+
+    <nav>
+
+        <a href="#" class="nav-link">
+            AI Assistant
+        </a>
+
+        <a href="#" class="nav-link">
+            Reports
+        </a>
+
+        <a href="#" class="nav-link">
+            Settings
+        </a>
+
+    </nav>
+
+</aside>
+
+
+
+<!-- ================= MAIN ================= -->
+
+<main class="main">
+
+
+    <!-- HEADER -->
+
+    <header class="topbar">
+
+        <div>
+
+            <h1 class="page-title">
+                Network Dashboard
+            </h1>
+
+            <div class="page-subtitle">
+                Real-time network overview
+            </div>
+
+        </div>
+
+
+        <div class="d-flex align-items-center gap-3">
+
+            <span class="online">
+                ● System Online
+            </span>
+
+            <div class="avatar">
+                A
+            </div>
+
+        </div>
+
+    </header>
+
+
+
+    <!-- CONTENT -->
+
+    <div class="content">
+
+
+        <!-- ================= STATS ================= -->
+
+        <div class="row g-3 mb-4">
+
+
+            <div class="col-xl-3 col-md-6">
+
+                <div class="card-custom stat-card">
+
+                    <div class="stat-label">
+                        Devices
+                    </div>
+
+                    <div class="stat-value">
+                        48
+                    </div>
+
+                    <div class="stat-small">
+                        46 online · 2 offline
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <div class="col-xl-3 col-md-6">
+
+                <div class="card-custom stat-card">
+
+                    <div class="stat-label">
+                        Network Health
+                    </div>
+
+                    <div class="stat-value">
+                        98%
+                    </div>
+
+                    <div class="stat-small">
+                        Excellent condition
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <div class="col-xl-3 col-md-6">
+
+                <div class="card-custom stat-card">
+
+                    <div class="stat-label">
+                        Active Alerts
+                    </div>
+
+                    <div class="stat-value accent">
+                        3
+                    </div>
+
+                    <div class="stat-small">
+                        Requires attention
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <div class="col-xl-3 col-md-6">
+
+                <div class="card-custom stat-card">
+
+                    <div class="stat-label">
+                        Network Traffic
+                    </div>
+
+                    <div class="stat-value">
+                        1.8 GB/s
+                    </div>
+
+                    <div class="stat-small">
+                        Current traffic
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- ================= NETWORK / ALERTS ================= -->
+
+        <div class="row g-4 mb-4">
+
+
+            <!-- NETWORK -->
+
+            <div class="col-lg-8">
+
+                <div class="card-custom p-4">
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <h5>
+                                Network Topology
+                            </h5>
+
+                            <p>
+                                Current infrastructure
+                            </p>
+
+                        </div>
+
+                        <button class="btn-light-netmind">
+                            View Network
+                        </button>
+
+                    </div>
+
+
+                    <div class="network">
+
+
+                        <div class="node node-main">
+                            Core Router
+                        </div>
+
+
+                        <div class="connection"></div>
+
+
+                        <div class="nodes">
+
+                            <div class="node">
+                                Switch 01
+                            </div>
+
+                            <div class="node">
+                                Switch 02
+                            </div>
+
+                            <div class="node node-warning">
+                                Switch 03
+                            </div>
+
+                        </div>
+
+
+                        <div class="connection"></div>
+
+
+                        <div class="nodes">
+
+                            <div class="node">
+                                Server 01
+                            </div>
+
+                            <div class="node">
+                                Server 02
+                            </div>
+
+                            <div class="node">
+                                Firewall
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- ALERTS -->
+
+            <div class="col-lg-4">
+
+                <div class="card-custom p-4 h-100">
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <h5>
+                                Recent Alerts
+                            </h5>
+
+                            <p>
+                                Latest network events
+                            </p>
+
+                        </div>
+
+                        <span class="accent fw-semibold">
+                            3
+                        </span>
+
+                    </div>
+
+
+                    <div class="alert-item">
+
+                        <div class="alert-title">
+                            <span class="dot"></span>
+                            High CPU Usage
+                        </div>
+
+                        <div class="alert-time">
+                            Router-01 · 2 min ago
+                        </div>
+
+                    </div>
+
+
+                    <div class="alert-item">
+
+                        <div class="alert-title">
+                            <span class="dot"></span>
+                            Packet Loss Detected
+                        </div>
+
+                        <div class="alert-time">
+                            Switch-03 · 8 min ago
+                        </div>
+
+                    </div>
+
+
+                    <div class="alert-item">
+
+                        <div class="alert-title">
+                            <span class="dot"></span>
+                            Device Offline
+                        </div>
+
+                        <div class="alert-time">
+                            Server-02 · 15 min ago
+                        </div>
+
+                    </div>
+
+
+                    <button class="btn-netmind w-100 mt-3">
+                        View All Alerts
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- ================= DEVICES ================= -->
+
+        <div class="card-custom p-4 mb-4">
+
+            <div class="section-header">
+
+                <div>
+
+                    <h5>
+                        Network Devices
+                    </h5>
+
+                    <p>
+                        Connected infrastructure
+                    </p>
+
+                </div>
+
+                <button class="btn-netmind">
+                    + Add Device
+                </button>
+
+            </div>
+
+
+            <div class="table-responsive">
+
+                <table class="table align-middle">
+
+                    <thead>
+
+                        <tr>
+                            <th>Device</th>
+                            <th>Type</th>
+                            <th>IP Address</th>
+                            <th>Status</th>
+                            <th>CPU</th>
+                        </tr>
+
+                    </thead>
+
+
+                    <tbody>
+
+
+                        <tr>
+
+                            <td class="fw-semibold">
+                                Router-01
+                            </td>
+
+                            <td>
+                                Router
+                            </td>
+
+                            <td>
+                                192.168.1.1
+                            </td>
+
+                            <td>
+                                <span class="status status-online">
+                                    Online
+                                </span>
+                            </td>
+
+                            <td>
+                                42%
+                            </td>
+
+                        </tr>
+
+
+                        <tr>
+
+                            <td class="fw-semibold">
+                                Switch-01
+                            </td>
+
+                            <td>
+                                Switch
+                            </td>
+
+                            <td>
+                                192.168.1.10
+                            </td>
+
+                            <td>
+                                <span class="status status-online">
+                                    Online
+                                </span>
+                            </td>
+
+                            <td>
+                                28%
+                            </td>
+
+                        </tr>
+
+
+                        <tr>
+
+                            <td class="fw-semibold">
+                                Switch-03
+                            </td>
+
+                            <td>
+                                Switch
+                            </td>
+
+                            <td>
+                                192.168.1.12
+                            </td>
+
+                            <td>
+                                <span class="status status-warning">
+                                    Warning
+                                </span>
+                            </td>
+
+                            <td>
+                                81%
+                            </td>
+
+                        </tr>
+
+
+                        <tr>
+
+                            <td class="fw-semibold">
+                                Server-02
+                            </td>
+
+                            <td>
+                                Server
+                            </td>
+
+                            <td>
+                                192.168.1.20
+                            </td>
+
+                            <td>
+                                <span class="status status-offline">
+                                    Offline
+                                </span>
+                            </td>
+
+                            <td>
+                                --
+                            </td>
+
+                        </tr>
+
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- ================= AI ASSISTANT ================= -->
+
+        <div class="card-custom p-4">
+
+            <div class="section-header">
+
+                <div>
+
+                    <h5>
+                        NetMind AI
+                    </h5>
+
+                    <p>
+                        Intelligent network assistant
+                    </p>
+
+                </div>
+
+                <button class="btn-netmind">
+                    Open Assistant
+                </button>
+
+            </div>
+
+
+            <div class="ai-box">
+
+                <div class="ai-icon">
+                    AI
+                </div>
+
+                <div class="ai-text">
+
+                    Your network is currently healthy.
+                    <strong>3 alerts</strong> require attention,
+                    including high CPU usage on Router-01
+                    and packet loss on Switch-03.
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+    </div>
+
+</main>
+
+
+</body>
+</html>
