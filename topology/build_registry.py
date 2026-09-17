@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """Builds registry.json: maps device names/owners to real runtime IPs and metadata.
-Combines branches.py (our network design) with `containerlab inspect` (live IPs)."""
+Combines branches.py (our network design) with `containerlab inspect` (live IPs).
+'ip' is always the management IP (eth0, used by NetMind's own Docker-based
+tools). 'network_ip' is the device's address on the actual simulated network
+(eth1, from branches.py's compute_addressing()) - not yet used by any
+NetMind tool, but recorded for future features (e.g. a real ping-between-hosts
+tool) that need to operate on the real topology rather than the management
+network."""
 import json
 import subprocess
-from branches import BRANCHES
+from branches import BRANCHES, compute_addressing
 
 TOPOLOGY_FILE = "netmind-large.clab.yml"
 LAB_NAME = "netmind-large"
@@ -16,7 +22,6 @@ def get_live_containers():
     data = json.loads(result.stdout)
     containers = data[LAB_NAME]
     prefix = f"clab-{LAB_NAME}-"
-    # map short node name (e.g. "host-khalid") -> container info
     return {
         c["name"][len(prefix):]: c
         for c in containers
@@ -25,6 +30,7 @@ def get_live_containers():
 
 def main():
     live = get_live_containers()
+    addressing = compute_addressing()
     devices = []
     missing = []
 
@@ -42,6 +48,7 @@ def main():
                 "segment": segment,
                 "container": live[fw_node]["name"],
                 "ip": live[fw_node]["ipv4_address"].split("/")[0],
+                "network_ip": addressing["firewalls"][fw_node]["lan_ip"],
             })
         else:
             missing.append(fw_node)
@@ -57,6 +64,7 @@ def main():
                     "segment": segment,
                     "container": live[node]["name"],
                     "ip": live[node]["ipv4_address"].split("/")[0],
+                    "network_ip": addressing["devices"].get(node),
                 })
             else:
                 missing.append(node)
@@ -72,6 +80,7 @@ def main():
                     "segment": segment,
                     "container": live[node]["name"],
                     "ip": live[node]["ipv4_address"].split("/")[0],
+                    "network_ip": addressing["devices"].get(node),
                 })
             else:
                 missing.append(node)
@@ -81,6 +90,7 @@ def main():
             "id": "r1", "owner": None, "type": "router", "branch": None,
             "segment": None, "container": live["r1"]["name"],
             "ip": live["r1"]["ipv4_address"].split("/")[0],
+            "network_ip": None,
         })
     else:
         missing.append("r1")
