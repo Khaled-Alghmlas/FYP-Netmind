@@ -86,6 +86,20 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "list_devices_on_segment",
+            "description": "List every device connected to a given switch or hub segment (e.g. 'switch-branch1', 'hub-branch2', 'switch-branch3'). Note: switches/hubs are plain network bridges, not controllable devices themselves.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "segment_id": {"type": "string", "description": "Segment name, e.g. 'switch-branch1'"}
+                },
+                "required": ["segment_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "list_firewall_rules",
             "description": "List the raw firewall rules configured on a firewall device (e.g. fw-branch1).",
             "parameters": {
@@ -236,6 +250,7 @@ DISPATCH = {
     "power_on": dc.power_on,
     "power_off": dc.power_off,
     "list_devices": dc.list_devices,
+    "list_devices_on_segment": dc.list_devices_on_segment,
     "list_firewall_rules": dc.list_firewall_rules,
     "get_open_ports": dc.get_open_ports,
     "audit_firewall": dc.audit_firewall,

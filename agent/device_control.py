@@ -27,6 +27,20 @@ def find_devices(name_or_owner):
         return exact
     return [d for d in devices if (d["owner"] or "").lower() == needle]
 
+def list_devices_on_segment(segment_id):
+    """List every device attached to a given switch/hub segment (e.g.
+    'switch-branch1', 'hub-branch2', 'switch-branch3'). Note: switches/hubs
+    themselves are plain Linux bridge interfaces on the host, not
+    containers, so this only lists what's connected to one, not the
+    segment's own status."""
+    devices = _load_registry()
+    needle = segment_id.strip().lower()
+    matches = [d for d in devices if (d.get("segment") or "").lower() == needle]
+    return {
+        "segment": segment_id,
+        "devices": [{"id": d["id"], "type": d["type"], "owner": d["owner"]} for d in matches],
+    }
+
 def get_status(name_or_owner):
     results = []
     for d in find_devices(name_or_owner):
