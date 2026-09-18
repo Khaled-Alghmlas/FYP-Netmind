@@ -3,12 +3,12 @@
 Unlike device_control.py (which manages Docker containers in the simulated
 containerlab lab), this module only *observes* the real LAN — it discovers
 devices via ARP scanning and checks whether they respond (online/offline).
-There is no power_on / power_off here: we don't administer real devices,
-we're just a guest on the network like everyone else.
+Includes mDNS support for discovering device hostnames (like printers).
 """
 import subprocess
 import socket
 import ipaddress
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 try:
@@ -16,6 +16,12 @@ try:
     HAS_SCAPY = True
 except ImportError:
     HAS_SCAPY = False
+
+try:
+    from zeroconf import Zeroconf, ServiceBrowser, DNSQuestion, const
+    HAS_ZEROCONF = True
+except ImportError:
+    HAS_ZEROCONF = False
 
 
 def get_local_subnet():
@@ -30,17 +36,64 @@ def get_local_subnet():
     return str(network)
 
 
+# قاموس مؤقت لتخزين أسماء mDNS المكتشفة
+_mdns_cache = {}
+
+if HAS_ZEROCONF:
+    class MDNSListener:
+        def remove_service(self, zeroconf, type_, name):
+            pass
+
+        def add_service(self, zeroconf, type_, name):
+            try:
+                info = zeroconf.get_service_info(type_, name)
+                if info and info.addresses:
+                    for addr in info.addresses:
+                        ip = socket.inet_to_ntoa(addr)
+                        if info.server:
+                            _mdns_cache[ip] = info.server.rstrip('.')
+            except Exception:
+                pass
+
+        def update_service(self, zeroconf, type_, name):
+            self.add_service(zeroconf, type_, name)
+
+    def _background_mdns_listener():
+        try:
+            z = Zeroconf()
+            listener = MDNSListener()
+            # استماع لخدمات الشبكة الشائعة للبحث عن الأسماء
+            browser = ServiceBrowser(z, ["_http._tcp.local.", "_printer._tcp.local.", "_ipp._tcp.local.", "_device-info._tcp.local."], listener)
+            time.sleep(2)  # منح وقت قصير لجمع الإعلانات
+            z.close()
+        except Exception:
+            pass
+
+    # تشغيل البحث في الخلفية لتعبئة الكاش
+    try:
+        import threading
+        t = threading.Thread(target=_background_mdns_listener, daemon=True)
+        t.start()
+    except Exception:
+        pass
+
+
 def _resolve_hostname(ip):
+    # 1. التحقق من الكاش الخاص بـ mDNS أولاً
+    if ip in _mdns_cache:
+        return _mdns_cache[ip]
+
+    # 2. المحاولة عبر Reverse DNS التقليدي
     try:
         return socket.gethostbyaddr(ip)[0]
     except (socket.herror, socket.gaierror, OSError):
-        return None
+        pass
+
+    return None
 
 
 def scan_network(subnet=None):
-    """ARP-scan the subnet (fast, reliable, requires root/CAP_NET_RAW).
-    Falls back to a ping sweep automatically if we don't have the needed
-    permissions (e.g. the web server is running as a normal user, not root)."""
+    """ARP-scan the subnet with mDNS hostname resolution."""
     subnet = subnet or get_local_subnet()
 
     if not HAS_SCAPY:
@@ -59,7 +112,7 @@ def scan_network(subnet=None):
                 "ip": received.psrc,
                 "mac": received.hwsrc,
                 "hostname": _resolve_hostname(received.psrc),
-                "status": "online",  # it answered ARP, so it's up by definition
+                "status": "online",
             })
         return sorted(devices, key=lambda d: tuple(int(x) for x in d["ip"].split(".")))
     except PermissionError:
@@ -69,7 +122,6 @@ def scan_network(subnet=None):
 
 
 def _ping_once(ip):
-    """Fallback when scapy/raw sockets aren't available: plain ping sweep."""
     try:
         res = subprocess.run(
             ["ping", "-c", "1", "-W", "1", str(ip)],
@@ -98,7 +150,6 @@ def _scan_network_ping_fallback(subnet):
 
 
 def get_status(ip_or_hostname):
-    """Check whether a single device currently responds (online) or not."""
     ip = ip_or_hostname
     try:
         ip = socket.gethostbyname(ip_or_hostname)
@@ -121,7 +172,6 @@ def get_ip(hostname):
 
 
 def list_devices():
-    """List every device currently visible on the real LAN."""
     return scan_network()
 
 
