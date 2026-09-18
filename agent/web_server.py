@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""FastAPI web server exposing the NetMind agent as a simple browser chat."""
+"""FastAPI web server exposing the NetMind agent as a simple browser chat.
+Supports two modes:
+  - "simulated": the containerlab lab, via device_control.py (full control)
+  - "real": the actual LAN this machine is on, via network_scanner.py
+            (discovery + online/offline only — no power control, since we're
+            just a guest on a real network, not its administrator)
+"""
 import json
 import os
 from pathlib import Path
@@ -12,13 +18,17 @@ from pydantic import BaseModel
 from groq import Groq
 
 import device_control as dc
+import network_scanner as ns
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 
 client = Groq(api_key=os.environ["GROQ_API_KEY"])
 MODEL = "openai/gpt-oss-120b"
 
-TOOLS = [
+# ---------------------------------------------------------------------------
+# SIMULATED (containerlab) tools — unchanged, full control
+# ---------------------------------------------------------------------------
+SIMULATED_TOOLS = [
     {
         "type": "function",
         "function": {
@@ -244,7 +254,7 @@ TOOLS = [
     },
 ]
 
-DISPATCH = {
+SIMULATED_DISPATCH = {
     "get_status": dc.get_status,
     "get_ip": dc.get_ip,
     "power_on": dc.power_on,
@@ -263,15 +273,99 @@ DISPATCH = {
     "change_camera_credentials": dc.change_camera_credentials,
 }
 
-SYSTEM_PROMPT = {
-    "role": "system",
-    "content": "You are NetMind, a network operations assistant. Use the provided tools to answer questions about device status, IPs, and to power devices on/off. Be concise. CRITICAL: Always respond in the exact same language as the user's most recent message — if they write in English, respond only in English; if Arabic, respond only in Arabic. Never switch to any other language under any circumstances, even mid-conversation. Tool results for power_on/power_off include an already_in_that_state field — if true, tell the user the device was already in that state and nothing changed, rather than implying an action just happened. You only handle questions about this network and its devices. If asked something unrelated (general knowledge, homework, math, or any topic with no connection to the network), politely decline and redirect the user back to network-related tasks — do not answer the unrelated question."
+SIMULATED_PROMPT = (
+    "You are NetMind, a network operations assistant for a SIMULATED lab network "
+    "(built with containerlab). Use the provided tools to answer questions about "
+    "device status, IPs, firewalls, and cameras, and to power devices on/off. "
+    "Be concise. Tool results for power_on/power_off include an already_in_that_state "
+    "field — if true, tell the user the device was already in that state and nothing "
+    "changed, rather than implying an action just happened."
+)
+
+# ---------------------------------------------------------------------------
+# REAL network tools — discovery/status only, no power control
+# ---------------------------------------------------------------------------
+REAL_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "list_devices",
+            "description": "Scan the real local network and list every device currently online, with its IP and MAC address.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_status",
+            "description": "Check whether a specific real device (by IP or hostname) is currently online or offline.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name_or_owner": {"type": "string", "description": "IP address or hostname of the device"}
+                },
+                "required": ["name_or_owner"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_ip",
+            "description": "Resolve the IP address of a real device by hostname.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name_or_owner": {"type": "string", "description": "Hostname to resolve"}
+                },
+                "required": ["name_or_owner"],
+            },
+        },
+    },
+]
+
+REAL_DISPATCH = {
+    "list_devices": lambda: ns.list_devices(),
+    "get_status": lambda name_or_owner: ns.get_status(name_or_owner),
+    "get_ip": lambda name_or_owner: ns.get_ip(name_or_owner),
 }
 
-# In-memory chat history per browser session
+REAL_PROMPT = (
+    "You are NetMind, a network operations assistant for a REAL local network. "
+    "You can only discover devices and check whether they are online or offline — "
+    "you have NO power control over real devices, because you are a guest on this "
+    "network, not its administrator. If asked to turn a device on/off, politely "
+    "explain that this isn't possible on a real network and offer to check its "
+    "status instead. Be concise."
+)
+
+COMMON_PROMPT_SUFFIX = (
+    " CRITICAL: Always respond in the exact same language as the user's most recent "
+    "message — if they write in English, respond only in English; if Arabic, respond "
+    "only in Arabic. Never switch to any other language under any circumstances, even "
+    "mid-conversation. You only handle questions about this network and its devices. "
+    "If asked something unrelated (general knowledge, homework, math, or any topic "
+    "with no connection to the network), politely decline and redirect the user back "
+    "to network-related tasks — do not answer the unrelated question."
+)
+
+MODES = {
+    "simulated": {
+        "tools": SIMULATED_TOOLS,
+        "dispatch": SIMULATED_DISPATCH,
+        "system_prompt": SIMULATED_PROMPT + COMMON_PROMPT_SUFFIX,
+    },
+    "real": {
+        "tools": REAL_TOOLS,
+        "dispatch": REAL_DISPATCH,
+        "system_prompt": REAL_PROMPT + COMMON_PROMPT_SUFFIX,
+    },
+}
+
+# In-memory chat history per (session_id, mode) pair
 SESSIONS = {}
 
-def run_query(user_input, history):
+def run_query(user_input, history, tools, dispatch):
     history.append({"role": "user", "content": user_input})
 
     for _ in range(5):
@@ -279,7 +373,7 @@ def run_query(user_input, history):
             response = client.chat.completions.create(
                 model=MODEL,
                 messages=history,
-                tools=TOOLS,
+                tools=tools,
                 tool_choice="auto",
             )
         except Exception as e:
@@ -294,7 +388,7 @@ def run_query(user_input, history):
             fn_name = call.function.name
             args = json.loads(call.function.arguments) if call.function.arguments else {}
             try:
-                result = DISPATCH[fn_name](**args)
+                result = dispatch[fn_name](**args)
             except Exception as e:
                 result = {"error": str(e)}
             history.append({
@@ -316,11 +410,17 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     session_id: str
     message: str
+    mode: str = "simulated"  # "simulated" or "real"
 
 @app.post("/api/chat")
 def chat(req: ChatRequest):
-    history = SESSIONS.setdefault(req.session_id, [dict(SYSTEM_PROMPT)])
-    reply = run_query(req.message, history)
-    return {"reply": reply}
+    mode = req.mode if req.mode in MODES else "simulated"
+    config = MODES[mode]
+
+    key = f"{req.session_id}:{mode}"
+    history = SESSIONS.setdefault(key, [{"role": "system", "content": config["system_prompt"]}])
+
+    reply = run_query(user_input=req.message, history=history, tools=config["tools"], dispatch=config["dispatch"])
+    return {"reply": reply, "mode": mode}
 
 app.mount("/", StaticFiles(directory=Path(__file__).parent / "web", html=True), name="web")
