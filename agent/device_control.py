@@ -41,12 +41,17 @@ def list_devices_on_segment(segment_id):
         "devices": [{"id": d["id"], "type": d["type"], "owner": d["owner"]} for d in matches],
     }
 
+def _friendly_status(docker_status):
+    """Map Docker's raw container status to the same online/offline
+    vocabulary real-mode uses, so both modes speak consistently."""
+    return "online" if docker_status == "running" else "offline"
+
 def get_status(name_or_owner):
     results = []
     for d in find_devices(name_or_owner):
         try:
             c = _client.containers.get(d["container"])
-            state = c.status  # 'running', 'exited', etc.
+            state = _friendly_status(c.status)
         except docker.errors.NotFound:
             state = "not found"
         results.append({"id": d["id"], "type": d["type"], "status": state})
@@ -65,8 +70,8 @@ def power_on(name_or_owner):
         results.append({
             "id": d["id"],
             "already_in_that_state": was_running,
-            "previous_status": c.status,
-            "new_status": "running",
+            "previous_status": _friendly_status(c.status),
+            "new_status": "online",
         })
     return results
 
@@ -80,8 +85,8 @@ def power_off(name_or_owner):
         results.append({
             "id": d["id"],
             "already_in_that_state": was_stopped,
-            "previous_status": c.status,
-            "new_status": "exited",
+            "previous_status": _friendly_status(c.status),
+            "new_status": "offline",
         })
     return results
 
@@ -261,7 +266,7 @@ def list_devices():
     for d in devices:
         try:
             c = _client.containers.get(d["container"])
-            state = c.status
+            state = _friendly_status(c.status)
         except docker.errors.NotFound:
             state = "not found"
         results.append({"id": d["id"], "owner": d["owner"], "type": d["type"], "status": state})
