@@ -55,7 +55,7 @@ MDNS_SERVICE_TYPES = [
     "_ssh._tcp.local.",
     "_companion-link._tcp.local.",
 ]
-MDNS_BROWSE_SECONDS = 3
+MDNS_BROWSE_SECONDS = 6
 
 
 class _MDNSListener:
