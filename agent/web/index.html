@@ -109,9 +109,11 @@
   #welcome.hidden { display: none; }
 
   .msg { margin: 10px 0; padding: 10px 14px; border-radius: 14px; max-width: 78%; line-height: 1.6; }
+  .msg.has-table { max-width: 100%; }
   .msg code { background: rgba(0,0,0,0.08); padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
-  .msg-table { border-collapse: collapse; width: 100%; margin: 6px 0; font-size: 0.92em; }
-  .msg-table th, .msg-table td { border: 1px solid var(--border); padding: 6px 10px; text-align: start; }
+  .msg-table-wrap { overflow-x: auto; max-width: 100%; margin: 6px 0; }
+  .msg-table { border-collapse: collapse; width: 100%; font-size: 0.92em; }
+  .msg-table th, .msg-table td { border: 1px solid var(--border); padding: 6px 10px; text-align: start; white-space: nowrap; }
   .msg-table th { background: rgba(0,0,0,0.08); font-weight: 600; }
   .user { background: var(--accent); color: var(--accent-text); margin-inline-start: auto; }
   .bot { background: var(--panel); border: 1px solid var(--border); margin-inline-end: auto; }
@@ -280,7 +282,7 @@ function tableCells(line) {
 function renderTable(lines) {
   const header = tableCells(lines[0]);
   const rows = lines.slice(2).map(tableCells);
-  let html = '<table class="msg-table"><thead><tr>';
+  let html = '<div class="msg-table-wrap"><table class="msg-table"><thead><tr>';
   header.forEach(h => { html += `<th>${escapeHtml(h)}</th>`; });
   html += '</tr></thead><tbody>';
   rows.forEach(row => {
@@ -288,7 +290,7 @@ function renderTable(lines) {
     row.forEach(cell => { html += `<td>${escapeHtml(cell)}</td>`; });
     html += '</tr>';
   });
-  html += '</tbody></table>';
+  html += '</tbody></table></div>';
   return html;
 }
 function formatLine(line) {
@@ -301,8 +303,10 @@ function formatMessage(text) {
   const lines = text.split('\n');
   let html = '';
   let i = 0;
+  let hasTable = false;
   while (i < lines.length) {
     if (isTableRow(lines[i]) && lines[i + 1] !== undefined && isSeparatorRow(lines[i + 1])) {
+      hasTable = true;
       const tableLines = [lines[i], lines[i + 1]];
       let j = i + 2;
       while (j < lines.length && isTableRow(lines[j])) {
@@ -316,13 +320,19 @@ function formatMessage(text) {
       i++;
     }
   }
-  return html;
+  return { html, hasTable };
 }
 
 function addMsg(text, cls, raw) {
   const div = document.createElement('div');
   div.className = 'msg ' + cls;
-  if (raw) { div.innerHTML = formatMessage(text); } else { div.textContent = text; }
+  if (raw) {
+    const { html, hasTable } = formatMessage(text);
+    div.innerHTML = html;
+    if (hasTable) div.classList.add('has-table');
+  } else {
+    div.textContent = text;
+  }
   chat.appendChild(div);
   chat.scrollTop = chat.scrollHeight;
   return div;
@@ -349,7 +359,9 @@ async function send() {
       body: JSON.stringify({ session_id: sessionId, message, mode })
     });
     const data = await res.json();
-    placeholder.innerHTML = formatMessage(data.reply);
+    const { html, hasTable } = formatMessage(data.reply);
+    placeholder.innerHTML = html;
+    if (hasTable) placeholder.classList.add('has-table');
   } catch (e) {
     placeholder.textContent = STRINGS[lang].error;
   }

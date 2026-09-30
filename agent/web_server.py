@@ -342,7 +342,11 @@ REAL_PROMPT = (
     "this at the end of your reply as a short standalone line in the exact "
     "format 'Scan method: ARP' or 'Scan method: Ping (ARP unavailable)'. "
     "This matters because ARP results include a real MAC address (more "
-    "reliable), while ping-only results don't."
+    "reliable), while ping-only results don't. "
+    "When listing multiple devices, ALWAYS format them as a Markdown table "
+    "with columns: IP Address | MAC Address | Hostname | Status. Use '-' for "
+    "any missing value (e.g. no hostname). Put the 'Scan method: ...' line "
+    "after the table, not inside it."
 )
 
 COMMON_PROMPT_SUFFIX = (
