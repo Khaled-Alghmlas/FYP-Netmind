@@ -399,20 +399,20 @@ Assumption: 8 to 10 focused hours per student per week. Adjust dates to the acad
 
 ```mermaid
 gantt
-    title NetMind roadmap (Oct 2026 - Apr 2027)
-    dateFormat  YYYY-MM-DD
-    axisFormat  %b
+    title NetMind roadmap (Oct 2026 to Apr 2027)
+    dateFormat YYYY-MM-DD
+    axisFormat %b
     section Foundation
-    M1 Stabilise, CI, confirmation flow        :m1, 2026-10-01, 31d
-    M2 Refactor: services, backends, registry  :m2, 2026-11-01, 30d
+    M1 Stabilise and CI          :m1, 2026-10-01, 31d
+    M2 Refactor and services     :m2, 2026-11-01, 30d
     section Observability
-    M3 Collector, alerts, live dashboard       :m3, 2026-12-01, 31d
+    M3 Alerts and live dashboard :m3, 2026-12-01, 31d
     section Intelligence
-    M4 Fault injection and RCA agent           :m4, 2027-01-01, 31d
-    M5 Proactive fixes, rollback, auth         :m5, 2027-02-01, 28d
+    M4 Fault injection and RCA   :m4, 2027-01-01, 31d
+    M5 Proactive fixes and auth  :m5, 2027-02-01, 28d
     section Evidence
-    M6 Benchmark, model comparison, user study :m6, 2027-03-01, 31d
-    M7 Thesis, v1.0, demo, defence             :m7, 2027-04-01, 30d
+    M6 Benchmark and user study  :m6, 2027-03-01, 31d
+    M7 Thesis and defence        :m7, 2027-04-01, 30d
 ```
 
 ### 6.3 Month-by-month detail
