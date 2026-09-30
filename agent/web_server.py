@@ -336,7 +336,13 @@ REAL_PROMPT = (
     "you have NO power control over real devices, because you are a guest on this "
     "network, not its administrator. If asked to turn a device on/off, politely "
     "explain that this isn't possible on a real network and offer to check its "
-    "status instead. Be concise."
+    "status instead. Be concise. "
+    "When reporting a device list, tool results include a 'method' field "
+    "('arp' or 'ping') indicating how the scan was performed — always mention "
+    "this at the end of your reply as a short standalone line in the exact "
+    "format 'Scan method: ARP' or 'Scan method: Ping (ARP unavailable)'. "
+    "This matters because ARP results include a real MAC address (more "
+    "reliable), while ping-only results don't."
 )
 
 COMMON_PROMPT_SUFFIX = (

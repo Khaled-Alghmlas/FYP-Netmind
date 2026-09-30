@@ -3,7 +3,28 @@
 Unlike device_control.py (which manages Docker containers in the simulated
 containerlab lab), this module only *observes* the real LAN — it discovers
 devices via ARP scanning and checks whether they respond (online/offline).
-Includes mDNS support for discovering device hostnames (like printers)."""
+Includes mDNS support for discovering device hostnames (like printers).
+
+Fixes applied per review (#6):
+  - IPv6-safe address parsing via info.parsed_addresses() instead of
+    socket.inet_ntoa (which only handles 4-byte IPv4 addresses and raised
+    a silently-swallowed OSError on any IPv6 record).
+  - get_service_info() is no longer called inside the zeroconf callback
+    (add_service/update_service) — those callbacks fire on zeroconf's own
+    event-loop thread, and a blocking network call there delays processing
+    of every other incoming mDNS packet. We now only record (type_, name)
+    in the callback and resolve them afterward, from the calling thread.
+  - Scan results are cached with a TTL so a repeated list_devices() call
+    returns instantly instead of re-running the full 6s mDNS browse + ARP
+    sweep every time.
+  - get_local_subnet() no longer depends on internet reachability: the
+    UDP-connect trick still works offline in most cases (no packet is
+    actually sent, it only asks the kernel routing table), but this adds a
+    real fallback — parsing `ip -4 addr show` — for cases where there's no
+    default route at all.
+  - The result now reports which discovery method actually ran ("arp" or
+    "ping"), instead of failing over silently.
+"""
 import subprocess
 import socket
 import ipaddress
@@ -23,24 +44,69 @@ except ImportError:
     HAS_ZEROCONF = False
 
 
+# ---------------------------------------------------------------------------
+# Result caching — makes repeated calls fast (acceptance criteria)
+# ---------------------------------------------------------------------------
+_CACHE_TTL_SECONDS = 20
+_cache = {"result": None, "timestamp": 0}
+
+
+def _cache_get():
+    if _cache["result"] is not None and (time.time() - _cache["timestamp"]) < _CACHE_TTL_SECONDS:
+        return _cache["result"]
+    return None
+
+
+def _cache_set(result):
+    _cache["result"] = result
+    _cache["timestamp"] = time.time()
+
+
+# ---------------------------------------------------------------------------
+# Subnet detection — works even with no internet route
+# ---------------------------------------------------------------------------
 def get_local_subnet():
-    """Guess the local /24 subnet from this machine's default route IP."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    """Guess the local /24 subnet. Tries the fast UDP-connect trick first
+    (works offline too, since no packet is actually sent — it only asks the
+    kernel which local interface *would* route to that address), then falls
+    back to reading the machine's own interface config directly, which has
+    no dependency on any route existing at all."""
     try:
-        s.connect(("8.8.8.8", 80))
-        local_ip = s.getsockname()[0]
-    finally:
-        s.close()
-    network = ipaddress.ip_network(f"{local_ip}/24", strict=False)
-    return str(network)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            return str(ipaddress.ip_network(f"{local_ip}/24", strict=False))
+        finally:
+            s.close()
+    except OSError:
+        pass  # no default route (e.g. genuinely offline) — fall through
+
+    try:
+        out = subprocess.run(
+            ["ip", "-4", "-o", "addr", "show"],
+            capture_output=True, text=True, timeout=2
+        )
+        for line in out.stdout.splitlines():
+            parts = line.split()
+            if "inet" in parts:
+                iface = parts[1]
+                if iface == "lo":
+                    continue
+                cidr = parts[parts.index("inet") + 1]  # e.g. "192.168.1.16/24"
+                return str(ipaddress.ip_network(cidr, strict=False))
+    except Exception:
+        pass
+
+    raise RuntimeError(
+        "Could not determine local subnet — no network interface with an "
+        "IPv4 address was found (are you connected to any network?)."
+    )
 
 
-# Common mDNS service types devices advertise under. Printers, streaming
-# boxes (AirPlay/Chromecast), and file-sharing services are the most
-# reliable; a plain client device (a phone/laptop not actively sharing
-# anything) may not advertise anything at all - it will still show up in
-# the scan by IP/MAC, just without a resolved hostname. That's a real mDNS
-# protocol limitation, not a bug.
+# ---------------------------------------------------------------------------
+# mDNS hostname resolution — non-blocking, IPv6-safe
+# ---------------------------------------------------------------------------
 MDNS_SERVICE_TYPES = [
     "_http._tcp.local.",
     "_https._tcp.local.",
@@ -59,42 +125,52 @@ MDNS_BROWSE_SECONDS = 6
 
 
 class _MDNSListener:
+    """Only records which (type_, name) pairs appeared. Resolution
+    (get_service_info, which does blocking network I/O) happens afterward
+    from the main thread — never inside these callbacks."""
     def __init__(self):
-        self.found = {}
+        self.seen = set()
+
+    def add_service(self, zeroconf, type_, name):
+        self.seen.add((type_, name))
+
+    def update_service(self, zeroconf, type_, name):
+        self.seen.add((type_, name))
 
     def remove_service(self, zeroconf, type_, name):
         pass
 
-    def add_service(self, zeroconf, type_, name):
-        try:
-            info = zeroconf.get_service_info(type_, name)
-            if info and info.addresses:
-                for addr in info.addresses:
-                    ip = socket.inet_ntoa(addr)
-                    if info.server:
-                        self.found[ip] = info.server.rstrip(".")
-        except Exception:
-            pass
-
-    def update_service(self, zeroconf, type_, name):
-        self.add_service(zeroconf, type_, name)
-
 
 def _mdns_scan():
-    """Actively browse mDNS for MDNS_BROWSE_SECONDS and return {ip: hostname}.
-    Runs fresh on every scan (not just once at server startup), so a device
-    that joins the network later is still discoverable."""
+    """Browse mDNS for MDNS_BROWSE_SECONDS, then resolve every service found
+    afterward (not inside the callback) and return {ip: hostname}."""
     if not HAS_ZEROCONF:
         return {}
+
+    found = {}
     try:
         zc = Zeroconf()
         listener = _MDNSListener()
         ServiceBrowser(zc, MDNS_SERVICE_TYPES, listener)
         time.sleep(MDNS_BROWSE_SECONDS)
+
+        for type_, name in listener.seen:
+            try:
+                info = zc.get_service_info(type_, name, timeout=1000)
+                if info and info.server:
+                    hostname = info.server.rstrip(".")
+                    # parsed_addresses() returns plain textual IPv4/IPv6
+                    # strings — unlike inet_ntoa it doesn't assume a 4-byte
+                    # packed address, so it never raises on an IPv6 record.
+                    for ip in info.parsed_addresses():
+                        found[ip] = hostname
+            except Exception:
+                continue  # one bad/unreachable service shouldn't kill the scan
+
         zc.close()
-        return listener.found
     except Exception:
-        return {}
+        pass
+    return found
 
 
 def _resolve_hostname(ip, mdns_results):
@@ -106,34 +182,47 @@ def _resolve_hostname(ip, mdns_results):
         return None
 
 
-def scan_network(subnet=None):
-    """ARP-scan the subnet with mDNS hostname resolution."""
+# ---------------------------------------------------------------------------
+# Network scanning — reports which method actually ran
+# ---------------------------------------------------------------------------
+def scan_network(subnet=None, use_cache=True):
+    if use_cache:
+        cached = _cache_get()
+        if cached is not None:
+            return cached
+
     subnet = subnet or get_local_subnet()
     mdns_results = _mdns_scan()
 
     if not HAS_SCAPY:
-        return _scan_network_ping_fallback(subnet, mdns_results)
+        result = _scan_network_ping_fallback(subnet, mdns_results)
+        _cache_set(result)
+        return result
 
     try:
         arp = ARP(pdst=subnet)
         ether = Ether(dst="ff:ff:ff:ff:ff:ff")
         packet = ether / arp
-
-        result = srp(packet, timeout=3, verbose=False)[0]
+        answered = srp(packet, timeout=3, verbose=False)[0]
 
         devices = []
-        for _, received in result:
+        for _, received in answered:
             devices.append({
                 "ip": received.psrc,
                 "mac": received.hwsrc,
                 "hostname": _resolve_hostname(received.psrc, mdns_results),
                 "status": "online",
             })
-        return sorted(devices, key=lambda d: tuple(int(x) for x in d["ip"].split(".")))
-    except PermissionError:
-        return _scan_network_ping_fallback(subnet, mdns_results)
-    except OSError:
-        return _scan_network_ping_fallback(subnet, mdns_results)
+        result = {
+            "method": "arp",
+            "devices": sorted(devices, key=lambda d: tuple(int(x) for x in d["ip"].split("."))),
+        }
+    except (PermissionError, OSError):
+        # No CAP_NET_RAW / not running as root — ARP needs raw sockets
+        result = _scan_network_ping_fallback(subnet, mdns_results)
+
+    _cache_set(result)
+    return result
 
 
 def _ping_once(ip):
@@ -162,7 +251,10 @@ def _scan_network_ping_fallback(subnet, mdns_results=None):
                     "hostname": _resolve_hostname(str(ip), mdns_results),
                     "status": "online",
                 })
-    return sorted(devices, key=lambda d: tuple(int(x) for x in d["ip"].split(".")))
+    return {
+        "method": "ping",
+        "devices": sorted(devices, key=lambda d: tuple(int(x) for x in d["ip"].split("."))),
+    }
 
 
 def get_status(ip_or_hostname):
@@ -188,6 +280,8 @@ def get_ip(hostname):
 
 
 def list_devices():
+    """List every device currently visible on the real LAN.
+    Returns {"method": "arp"|"ping", "devices": [...]}."""
     return scan_network()
 
 
