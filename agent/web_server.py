@@ -433,4 +433,64 @@ def chat(req: ChatRequest):
     reply = run_query(user_input=req.message, history=history, tools=config["tools"], dispatch=config["dispatch"])
     return {"reply": reply, "mode": mode}
 
+# ============================================================================
+# ADDED — REST endpoints for the live web Dashboard (agent/web/Dashboard.html).
+# Reuses the exact same dc./ns. functions the chat tools above already call —
+# nothing here duplicates logic, and nothing above this line is touched.
+# ============================================================================
+
+class PowerRequest(BaseModel):
+    state: str  # "on" or "off"
+
+
+@app.get("/api/devices")
+def api_devices():
+    """Live device list for the Dashboard (simulated lab), from registry.json + Docker."""
+    return dc.list_devices_dashboard()
+
+
+@app.get("/api/alerts")
+def api_alerts():
+    """Live alerts for the Dashboard (simulated lab)."""
+    return dc.get_alerts()
+
+
+@app.post("/api/devices/{device_id}/power")
+def api_power(device_id: str, req: PowerRequest):
+    """Powers a simulated-lab device on/off — same functions the chat uses."""
+    if req.state == "on":
+        result = dc.power_on(device_id)
+    elif req.state == "off":
+        result = dc.power_off(device_id)
+    else:
+        return {"error": "state must be 'on' or 'off'"}
+    return {"result": result}
+
+
+@app.get("/api/real-devices")
+def api_real_devices():
+    """Live devices on the real physical LAN (ARP/mDNS scan), shaped like /api/devices."""
+    raw = ns.list_devices()
+    items = raw.get("devices", []) if isinstance(raw, dict) else raw
+    return [
+        {
+            "id": d.get("ip"),
+            "name": d.get("hostname") or d.get("ip"),
+            "type": "real-device",
+            "ip": d.get("ip"),
+            "mac": d.get("mac"),
+            "status": d.get("status", "online"),
+            "cpu": 0,
+            "traffic": 0,
+        }
+        for d in items
+    ]
+
+
+@app.get("/api/real-alerts")
+def api_real_alerts():
+    """Real-network mode is read-only monitoring, so no alerts yet."""
+    return []
+
+
 app.mount("/", StaticFiles(directory=Path(__file__).parent / "web", html=True), name="web")

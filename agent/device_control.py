@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import time
 """Core device control functions for the NetMind agent.
 Resolves device/owner names via registry.json, then checks or changes
 container state via the Docker SDK — this IS the on/off state we care about."""
@@ -271,3 +272,85 @@ def list_devices():
             state = "not found"
         results.append({"id": d["id"], "owner": d["owner"], "type": d["type"], "status": state})
     return results
+
+def _container_cpu_percent(container):
+    """Best-effort single-sample CPU % via the Docker stats API. Returns None on
+    failure (e.g. container just started and has no precpu sample yet)."""
+    try:
+        stats = container.stats(stream=False)
+        cpu_delta = (stats["cpu_stats"]["cpu_usage"]["total_usage"]
+                     - stats["precpu_stats"]["cpu_usage"]["total_usage"])
+        system_delta = (stats["cpu_stats"]["system_cpu_usage"]
+                         - stats["precpu_stats"]["system_cpu_usage"])
+        online_cpus = stats["cpu_stats"].get("online_cpus") or len(
+            stats["cpu_stats"]["cpu_usage"].get("percpu_usage", [1])
+        )
+        if system_delta > 0 and cpu_delta >= 0:
+            return (cpu_delta / system_delta) * online_cpus * 100.0
+    except Exception:
+        pass
+    return None
+
+
+def list_devices_dashboard():
+    """Device list shaped for the web Dashboard (id, name, type, ip, status, cpu).
+    Reads the exact same registry.json + Docker SDK as list_devices() above."""
+    devices = _load_registry()
+    results = []
+    for d in devices:
+        try:
+            c = _client.containers.get(d["container"])
+            raw_status = c.status
+        except docker.errors.NotFound:
+            raw_status = "not found"
+
+        if raw_status == "running":
+            cpu = _container_cpu_percent(c)
+            cpu = round(cpu) if cpu is not None else 0
+            status = "warning" if cpu >= 80 else "online"
+        else:
+            cpu = 0
+            status = "offline"
+
+        results.append({
+            "id": d["id"],
+            "name": d["id"],
+            "type": d["type"],
+            "ip": d.get("ip", ""),
+            "status": status,
+            "cpu": cpu,
+            "traffic": 0,
+        })
+    return results
+
+
+def get_alerts():
+    """Derives live alerts from device status plus real firewall-audit findings."""
+    alerts = []
+    now = int(time.time() * 1000)
+
+    for d in list_devices_dashboard():
+        if d["status"] == "offline":
+            alerts.append({"id": f"offline-{d['id']}", "title": "Device Offline",
+                            "detail": d["id"], "ts": now, "level": "offline"})
+        elif d["status"] == "warning":
+            alerts.append({"id": f"cpu-{d['id']}", "title": "High CPU Usage",
+                            "detail": f"{d['id']} ({d['cpu']}%)", "ts": now, "level": "warning"})
+
+    for d in _load_registry():
+        if d["type"] != "firewall":
+            continue
+        try:
+            audit = audit_firewall(d["id"])
+        except Exception:
+            continue
+        for finding in audit["findings"]:
+            alerts.append({
+                "id": f"fw-{d['id']}-{abs(hash(finding)) % 10000}",
+                "title": "Firewall Finding",
+                "detail": finding,
+                "ts": now,
+                "level": "warning",
+            })
+
+    return alerts
