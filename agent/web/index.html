@@ -5,6 +5,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+    <!-- Prevent browsers from serving a stale cached copy of this page.
+         Important here specifically: this file replaces an older index.html
+         at the exact same URL, so without this, anyone who visited the old
+         page before (classmates, the doctor, etc.) could keep seeing the
+         old cached version — including its dark-mode color bugs — until
+         their browser cache happened to expire on its own. -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+
     <title>NetMind</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -266,6 +276,18 @@ body[data-net-mode="real"] .sim-only { display: none; }
 .msg-table th { background: var(--code-bg); font-weight: 600; }
 .user { background: var(--accent); color: var(--accent-text); margin-inline-start: auto; }
 .bot { background: var(--panel); border: 1px solid var(--border); margin-inline-end: auto; }
+
+/* Evidence Chain — collapsible diagnostic-steps block under a bot reply */
+.evidence-chain { margin-top: 8px; font-size: 12px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
+.evidence-chain summary { cursor: pointer; color: var(--muted); font-weight: 500; list-style: none; }
+.evidence-chain summary::-webkit-details-marker { display: none; }
+.evidence-chain summary::before { content: "▸ "; }
+.evidence-chain[open] summary::before { content: "▾ "; }
+.evidence-chain summary:hover { color: var(--text); }
+.evidence-step { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 6px; }
+.evidence-step-head code { background: none; padding: 0; font-size: 12px; }
+.evidence-step-result { margin-top: 2px; opacity: 0.85; word-break: break-all; }
+.evidence-step-result code { background: none; padding: 0; }
 
 #inputBar { display: flex; padding: 16px; gap: 10px; border-top: 1px solid var(--border); }
 #inputBox { flex: 1; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 15px; font-family: inherit; }
@@ -843,6 +865,27 @@ body[data-net-mode="real"] .sim-only { display: none; }
         }
         return { html: html, hasTable: hasTable };
     }
+    // ADDED — Evidence Chain: renders the list of tool calls (checks) the
+    // backend executed to produce this reply, as a collapsible block under
+    // the message. Each entry shows exactly what was run and what it
+    // returned, so the user can inspect the reasoning instead of just
+    // trusting the final sentence.
+    function renderSteps(steps) {
+        if (!steps || steps.length === 0) return "";
+        var title = lang === "ar" ? ("خطوات الفحص (" + steps.length + ")") : ("Diagnostic steps (" + steps.length + ")");
+        var html = '<details class="evidence-chain"><summary>' + escapeHtml(title) + "</summary>";
+        steps.forEach(function (s, i) {
+            var argsStr = JSON.stringify(s.args || {});
+            var resultStr = JSON.stringify(s.result);
+            html += '<div class="evidence-step">' +
+                '<div class="evidence-step-head">' + (i + 1) + ". <code>" + escapeHtml(s.tool) + "(" + escapeHtml(argsStr) + ")</code></div>" +
+                '<div class="evidence-step-result"><code>' + escapeHtml(resultStr) + "</code></div>" +
+                "</div>";
+        });
+        html += "</details>";
+        return html;
+    }
+
     function addMsg(text, cls, raw) {
         var div = document.createElement("div");
         div.className = "msg " + cls;
@@ -875,7 +918,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
             Api.chat(sessionId, message, netMode).then(function (data) {
                 var r = formatMessage(data.reply);
-                placeholder.innerHTML = r.html;
+                placeholder.innerHTML = r.html + renderSteps(data.steps);
                 if (r.hasTable) placeholder.classList.add("has-table");
             }).catch(function () {
                 placeholder.textContent = STRINGS[lang].error;

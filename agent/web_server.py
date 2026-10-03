@@ -375,7 +375,12 @@ MODES = {
 # In-memory chat history per (session_id, mode) pair
 SESSIONS = {}
 
-def run_query(user_input, history, tools, dispatch):
+def run_query(user_input, history, tools, dispatch, steps=None):
+    # `steps` is OPTIONAL and additive: when the caller passes a list, every
+    # executed tool call (the "evidence chain") is recorded into it as
+    # {"tool": ..., "args": ..., "result": ...}. Nothing about the existing
+    # control flow or return value changes — a caller that doesn't pass
+    # `steps` sees identical behavior to before.
     history.append({"role": "user", "content": user_input})
 
     for _ in range(5):
@@ -406,6 +411,8 @@ def run_query(user_input, history, tools, dispatch):
                 "tool_call_id": call.id,
                 "content": json.dumps(result),
             })
+            if steps is not None:
+                steps.append({"tool": fn_name, "args": args, "result": result})
 
     return "Sorry, I couldn't complete that after several tool calls."
 
@@ -430,8 +437,11 @@ def chat(req: ChatRequest):
     key = f"{req.session_id}:{mode}"
     history = SESSIONS.setdefault(key, [{"role": "system", "content": config["system_prompt"]}])
 
-    reply = run_query(user_input=req.message, history=history, tools=config["tools"], dispatch=config["dispatch"])
-    return {"reply": reply, "mode": mode}
+    # ADDED — collects the evidence chain (every tool call + its result) for
+    # this turn, so the UI can show the diagnostic steps behind the reply.
+    steps = []
+    reply = run_query(user_input=req.message, history=history, tools=config["tools"], dispatch=config["dispatch"], steps=steps)
+    return {"reply": reply, "mode": mode, "steps": steps}
 
 # ============================================================================
 # ADDED — REST endpoints for the live web Dashboard (agent/web/Dashboard.html).
