@@ -1,14 +1,29 @@
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NetMind</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-  :root {
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>NetMind</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <!-- Bootstrap loaded from CDN instead of embedded inline (same version/variant
+         the project already used: 5.3.3 RTL build) — functionally identical,
+         just not bloating this file with a quarter-megabyte of minified CSS. -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css">
+
+    <style>
+
+/* =========================================================================
+   SHARED DESIGN TOKENS (used by both the Chat view and the Dashboard view)
+   ========================================================================= */
+:root {
     --bg: #FAF7F2;
     --panel: #F0EBE3;
     --border: #E4DDD1;
@@ -18,8 +33,21 @@
     --accent-text: #FFFFFF;
     --input-bg: #FFFFFF;
     --code-bg: rgba(0,0,0,0.08);
-  }
-  :root[data-theme="dark"] {
+
+    /* status/semantic tokens — previously hardcoded hex in several places,
+       which is why dark mode looked inconsistent (some boxes stayed light).
+       Centralizing them here means dark mode now overrides everything. */
+    --surface: #FFFFFF;
+    --success-bg: #e8f0e8;
+    --success-text: #5f8068;
+    --warning-bg: #f8eadb;
+    --warning-text: #a96835;
+    --danger-bg: #f4e1dd;
+    --danger-text: #a85b4b;
+    --row-border: #eee8e0;
+    --topbar-bg: rgba(250,247,242,0.9);
+}
+:root[data-theme="dark"] {
     --bg: #1E1B18;
     --panel: #2A2622;
     --border: #3D3833;
@@ -29,350 +57,1137 @@
     --accent-text: #FFFFFF;
     --input-bg: #2A2622;
     --code-bg: rgba(255,255,255,0.1);
-  }
-  body { transition: background-color 0.15s, color 0.15s; }
-  * { box-sizing: border-box; }
-  body {
-    font-family: 'IBM Plex Sans', 'IBM Plex Sans Arabic', sans-serif;
+
+    --surface: #2A2622;
+    --success-bg: rgba(95,128,104,0.22);
+    --success-text: #8fbf9a;
+    --warning-bg: rgba(169,104,53,0.22);
+    --warning-text: #e0a569;
+    --danger-bg: rgba(168,91,75,0.22);
+    --danger-text: #e0948a;
+    --row-border: #3D3833;
+    --topbar-bg: rgba(30,27,24,0.9);
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
     background: var(--bg);
     color: var(--text);
-    margin: 0;
-    display: flex;
-    justify-content: center;
+    font-family: 'IBM Plex Sans', 'IBM Plex Sans Arabic', sans-serif;
+    transition: background-color 0.15s, color 0.15s;
+}
+html[dir="rtl"] body { font-family: 'IBM Plex Sans Arabic', 'IBM Plex Sans', sans-serif; }
+
+/* ================= SIDEBAR ================= */
+
+.sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 230px;
     height: 100vh;
-    overflow: hidden;
-  }
-  html[dir="rtl"] body { font-family: 'IBM Plex Sans Arabic', 'IBM Plex Sans', sans-serif; }
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    padding: 24px 16px;
+    overflow-y: auto;
+}
 
-  #app { width: 100%; max-width: 720px; height: 100vh; display: flex; flex-direction: column; }
+.logo { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; padding: 0 10px; }
+.logo span { color: var(--accent); }
 
-  #header {
+.section-title {
+    font-size: 11px; color: var(--muted); text-transform: uppercase;
+    margin: 32px 10px 10px; letter-spacing: 0.06em;
+}
+
+.nav-link {
+    color: var(--muted); border-radius: 9px; padding: 10px 12px; margin-bottom: 3px;
+    font-size: 14px; transition: 0.15s; cursor: pointer; display: block;
+}
+.nav-link:hover { color: var(--text); background: rgba(255,255,255,0.08); }
+.nav-link.active { background: var(--accent); color: white; }
+.nav-link.disabled { opacity: 0.45; cursor: default; }
+.nav-link.disabled:hover { background: none; color: var(--muted); }
+
+/* ================= MAIN ================= */
+
+.main { margin-left: 230px; min-height: 100vh; }
+
+/* ================= TOPBAR ================= */
+
+.topbar {
+    height: 72px; border-bottom: 1px solid var(--border);
     display: flex; align-items: center; justify-content: space-between;
-    padding: 18px 20px; border-bottom: 1px solid var(--border);
+    padding: 0 28px; background: var(--topbar-bg); position: sticky; top: 0; z-index: 5;
     flex-wrap: wrap; gap: 10px;
-  }
-  #wordmark { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
-  #langToggle {
+}
+
+.page-title { font-size: 18px; font-weight: 600; margin: 0; }
+.page-subtitle { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+.online {
+    color: var(--success-text); background: var(--success-bg);
+    padding: 6px 11px; border-radius: 20px; font-size: 12px; transition: 0.3s;
+}
+.online.degraded { color: var(--warning-text); background: var(--warning-bg); }
+
+.avatar {
+    width: 34px; height: 34px; border-radius: 50%; background: var(--panel);
+    border: 1px solid var(--border); display: flex; align-items: center;
+    justify-content: center; font-size: 13px; font-weight: 600;
+}
+
+/* shared pill-style toggle buttons (theme / net-mode) used in the topbar */
+.theme-toggle-btn, .mode-toggle-btn {
     display: flex; align-items: center; gap: 6px;
     background: none; border: 1px solid var(--border); border-radius: 20px;
-    padding: 6px 12px; cursor: pointer; color: var(--text); font-size: 13px;
+    padding: 6px 12px; cursor: pointer; color: var(--text); font-size: 12px;
     font-family: inherit;
-  }
-  #langToggle:hover { background: var(--panel); }
-  #langToggle svg { width: 15px; height: 15px; }
+}
+.theme-toggle-btn:hover, .mode-toggle-btn:hover { background: var(--panel); }
+.theme-toggle-btn svg, .mode-toggle-btn svg { width: 15px; height: 15px; }
+.mode-toggle-btn.real-active { border-color: var(--accent); color: var(--accent); }
 
-  #headerControls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  #themeToggle {
-    display: flex; align-items: center; justify-content: center;
+#langToggle {
+    display: flex; align-items: center; gap: 6px;
     background: none; border: 1px solid var(--border); border-radius: 20px;
-    width: 32px; height: 32px; cursor: pointer; color: var(--text); padding: 0;
-  }
-  #themeToggle:hover { background: var(--panel); }
-  #themeToggle svg { width: 16px; height: 16px; }
+    padding: 6px 12px; cursor: pointer; color: var(--text); font-size: 12px;
+    font-family: inherit;
+}
+#langToggle:hover { background: var(--panel); }
+#langToggle svg { width: 15px; height: 15px; }
 
-  #modeToggle {
-    display: flex; align-items: center; gap: 2px;
-    background: var(--panel); border: 1px solid var(--border); border-radius: 20px;
-    padding: 3px; font-family: inherit;
-  }
-  .mode-segment {
-    border: none; background: none; cursor: pointer; font-family: inherit;
-    font-size: 13px; padding: 5px 12px; border-radius: 16px; color: var(--muted);
-    white-space: nowrap; transition: background-color 0.15s, color 0.15s;
-  }
-  .mode-segment.active { background: var(--accent); color: var(--accent-text); }
-  .mode-segment:not(.active):hover { color: var(--text); }
+/* ================= CONTENT ================= */
 
-  #welcome {
-    flex: 1; display: flex; flex-direction: column; align-items: center;
-    justify-content: center; padding: 32px; text-align: center;
-  }
-  #welcome h1 { font-size: 26px; font-weight: 600; margin: 0 0 8px; letter-spacing: -0.01em; }
-  #welcome p { color: var(--muted); font-size: 15px; margin: 0 0 28px; max-width: 420px; line-height: 1.6; }
-  #examples {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; max-width: 480px;
-  }
-  .example {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
-    padding: 12px 14px; font-size: 13.5px; cursor: pointer; text-align: start;
-    color: var(--text); line-height: 1.4; transition: border-color 0.15s;
-  }
-  .example:hover { border-color: var(--accent); }
-  .example:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.content { padding: 28px; }
 
-  #chat { flex: 1; overflow-y: auto; padding: 20px; display: none; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
-  #chat::-webkit-scrollbar { width: 8px; }
-  #chat::-webkit-scrollbar-track { background: transparent; }
-  #chat::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-  #chat::-webkit-scrollbar-thumb:hover { background: var(--muted); }
-  #chat.active { display: block; }
-  #welcome.hidden { display: none; }
+/* ================= CARDS ================= */
 
-  .msg { margin: 10px 0; padding: 10px 14px; border-radius: 14px; max-width: 78%; line-height: 1.6; }
-  .msg.has-table { max-width: 100%; }
-  .msg code { background: rgba(0,0,0,0.08); padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
-  .msg-table-wrap { overflow-x: auto; max-width: 100%; margin: 6px 0; }
-  .msg-table { border-collapse: collapse; width: 100%; font-size: 0.92em; }
-  .msg-table th, .msg-table td { border: 1px solid var(--border); padding: 6px 10px; text-align: start; white-space: nowrap; }
-  .msg-table th { background: rgba(0,0,0,0.08); font-weight: 600; }
-  .user { background: var(--accent); color: var(--accent-text); margin-inline-start: auto; }
-  .bot { background: var(--panel); border: 1px solid var(--border); margin-inline-end: auto; }
+.card-custom { background: var(--input-bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: none; }
+.stat-card { padding: 20px; }
+.stat-label { color: var(--muted); font-size: 13px; }
+.stat-value { font-size: 25px; font-weight: 600; margin: 7px 0; transition: color 0.3s; }
+.stat-small { color: var(--muted); font-size: 12px; }
+.accent { color: var(--accent); }
 
-  #inputBar { display: flex; padding: 16px; gap: 10px; border-top: 1px solid var(--border); }
-  #inputBox {
-    flex: 1; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border);
-    background: var(--input-bg); color: var(--text); font-size: 15px; font-family: inherit;
-  }
-  #inputBox:focus { outline: none; border-color: var(--accent); }
-  #sendBtn {
-    padding: 12px 22px; border: none; border-radius: 10px; background: var(--accent);
-    color: var(--accent-text); cursor: pointer; font-size: 15px; font-family: inherit; font-weight: 500;
-  }
-  #sendBtn:disabled { opacity: 0.5; cursor: default; }
-</style>
+.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+.section-header h5 { font-size: 15px; font-weight: 600; margin: 0; }
+.section-header p { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+
+/* ================= BUTTONS ================= */
+
+.btn-netmind { background: var(--accent); border: none; color: white; border-radius: 8px; padding: 8px 14px; font-size: 13px; text-decoration: none; display: inline-block; }
+.btn-netmind:hover { background: #b95738; color: white; }
+.btn-light-netmind { background: transparent; border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 7px 12px; font-size: 12px; }
+.btn-light-netmind:hover { background: var(--panel); }
+
+/* ================= NETWORK TOPOLOGY ================= */
+
+.network { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; min-height: 290px; padding: 30px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+.node { background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 10px 18px; font-size: 13px; font-weight: 500; transition: 0.4s; cursor: default; position: relative; }
+.node small { display: block; font-weight: 400; color: var(--muted); font-size: 10px; margin-top: 2px; }
+.node-main { border-color: var(--accent); }
+.node-warning { border-color: var(--warning-text); background: var(--warning-bg); }
+.node-offline { border-color: var(--danger-text); background: var(--danger-bg); opacity: 0.75; }
+.connection { width: 1px; height: 28px; background: var(--border); }
+.nodes { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+
+.real-only { display: none; }
+body[data-net-mode="real"] .real-only { display: block; }
+body[data-net-mode="real"] .sim-only { display: none; }
+
+/* ================= ALERTS ================= */
+
+.alert-item { padding: 13px 0; border-bottom: 1px solid var(--border); }
+.alert-item:last-child { border-bottom: none; }
+.alert-title { font-size: 13px; font-weight: 500; }
+.alert-time { color: var(--muted); font-size: 11px; margin-top: 3px; }
+.dot { width: 7px; height: 7px; background: var(--accent); border-radius: 50%; display: inline-block; margin-right: 7px; }
+.empty-note { color: var(--muted); font-size: 12px; padding: 10px 0; }
+
+/* ================= TABLE ================= */
+
+.table { margin: 0; color: var(--text); }
+.table th { color: var(--muted); font-size: 12px; font-weight: 500; border-bottom: 1px solid var(--border); }
+.table td { font-size: 13px; border-bottom: 1px solid var(--row-border); padding: 14px 8px; }
+.status { padding: 5px 9px; border-radius: 20px; font-size: 11px; }
+.status-online { background: var(--success-bg); color: var(--success-text); }
+.status-warning { background: var(--warning-bg); color: var(--warning-text); }
+.status-offline { background: var(--danger-bg); color: var(--danger-text); }
+
+/* ================= AI PANEL (dashboard) ================= */
+
+.ai-box { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+.ai-icon { width: 34px; height: 34px; background: var(--accent); color: white; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-weight: 600; margin-bottom: 12px; }
+.ai-text { font-size: 13px; line-height: 1.6; color: var(--text); }
+
+/* ================= MODAL TWEAKS ================= */
+
+.modal-content { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; }
+.modal-header, .modal-footer { border-color: var(--border); }
+.form-label { font-size: 13px; color: var(--muted); }
+.form-control, .form-select { background: var(--input-bg); border: 1px solid var(--border); font-size: 13px; }
+.form-control:focus, .form-select:focus { border-color: var(--accent); box-shadow: 0 0 0 .2rem rgba(201,100,66,.15); }
+
+.cpu-bar-track { background: var(--row-border); border-radius: 20px; height: 5px; width: 60px; overflow: hidden; display: inline-block; vertical-align: middle; margin-right: 6px; }
+.cpu-bar-fill { height: 100%; background: var(--accent); transition: width 0.4s; }
+
+/* =========================================================================
+   CHAT VIEW
+   ========================================================================= */
+
+#chatView { display: flex; justify-content: center; }
+#chatApp { width: 100%; max-width: 760px; height: calc(100vh - 72px); display: flex; flex-direction: column; }
+
+#welcome { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px; text-align: center; }
+#welcome h1 { font-size: 26px; font-weight: 600; margin: 0 0 8px; letter-spacing: -0.01em; }
+#welcome p { color: var(--muted); font-size: 15px; margin: 0 0 28px; max-width: 420px; line-height: 1.6; }
+#examples { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; max-width: 480px; }
+.example { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; font-size: 13.5px; cursor: pointer; text-align: start; color: var(--text); line-height: 1.4; transition: border-color 0.15s; }
+.example:hover { border-color: var(--accent); }
+.example:last-child:nth-child(odd) { grid-column: 1 / -1; }
+
+#chat { flex: 1; overflow-y: auto; padding: 20px; display: none; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+#chat::-webkit-scrollbar { width: 8px; }
+#chat::-webkit-scrollbar-track { background: transparent; }
+#chat::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+#chat::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+#chat.active { display: block; }
+#welcome.hidden { display: none; }
+
+.msg { margin: 10px 0; padding: 10px 14px; border-radius: 14px; max-width: 78%; line-height: 1.6; }
+.msg.has-table { max-width: 100%; }
+.msg code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
+.msg-table-wrap { overflow-x: auto; max-width: 100%; margin: 6px 0; }
+.msg-table { border-collapse: collapse; width: 100%; font-size: 0.92em; }
+.msg-table th, .msg-table td { border: 1px solid var(--border); padding: 6px 10px; text-align: start; white-space: nowrap; }
+.msg-table th { background: var(--code-bg); font-weight: 600; }
+.user { background: var(--accent); color: var(--accent-text); margin-inline-start: auto; }
+.bot { background: var(--panel); border: 1px solid var(--border); margin-inline-end: auto; }
+
+#inputBar { display: flex; padding: 16px; gap: 10px; border-top: 1px solid var(--border); }
+#inputBox { flex: 1; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 15px; font-family: inherit; }
+#inputBox:focus { outline: none; border-color: var(--accent); }
+#sendBtn { padding: 12px 22px; border: none; border-radius: 10px; background: var(--accent); color: var(--accent-text); cursor: pointer; font-size: 15px; font-family: inherit; font-weight: 500; }
+#sendBtn:disabled { opacity: 0.5; cursor: default; }
+
+/* ================= RESPONSIVE ================= */
+
+@media (max-width: 900px) {
+    .sidebar { width: 70px; padding: 20px 8px; }
+    .logo { font-size: 0; text-align: center; }
+    .logo span { font-size: 18px; }
+    .nav-link { text-align: center; font-size: 0; }
+    .main { margin-left: 70px; }
+    .section-title { display: none; }
+}
+
+    </style>
 </head>
+
 <body>
-<div id="app">
-  <div id="header">
-    <div id="wordmark">NetMind</div>
-    <div id="headerControls">
-      <div id="modeToggle">
-        <button class="mode-segment" data-mode="simulated" id="modeSimBtn">Simulated</button>
-        <button class="mode-segment" data-mode="real" id="modeRealBtn">Real Network</button>
-      </div>
-      <button id="themeToggle" aria-label="Toggle theme">
-        <svg id="themeIconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
-        <svg id="themeIconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:none"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
-      </button>
-      <button id="langToggle">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20a15 15 0 0 1 0-20"/></svg>
-        <span id="langLabel">العربية</span>
-      </button>
+
+<!-- ================= SIDEBAR (shared) ================= -->
+
+<aside class="sidebar">
+
+    <div class="logo">NetMind <span>AI</span></div>
+
+    <div class="section-title" data-i18n="navOverview">Overview</div>
+
+    <nav>
+        <a href="#" class="nav-link" data-view="dashboard" id="navDashboard" data-i18n="navDashboard">Dashboard</a>
+        <a href="#" class="nav-link" data-view="chat" id="navChat" data-i18n="navChat">AI Chat</a>
+        <a href="#" class="nav-link disabled" data-i18n="navDevices">Devices</a>
+        <a href="#" class="nav-link disabled" data-i18n="navAlerts">Alerts</a>
+        <a href="#" class="nav-link disabled" data-i18n="navLogs">Logs</a>
+    </nav>
+
+    <div class="section-title" data-i18n="navIntelligence">Intelligence</div>
+
+    <nav>
+        <a href="#" class="nav-link" data-view="chat" data-i18n="navAiAssistant">AI Assistant</a>
+        <a href="#" class="nav-link disabled" data-i18n="navReports">Reports</a>
+        <a href="#" class="nav-link" id="reset-demo" data-i18n="navRefresh">Refresh Now</a>
+    </nav>
+
+</aside>
+
+<!-- ================= MAIN (shared shell) ================= -->
+
+<main class="main">
+
+    <header class="topbar">
+
+        <div>
+            <h1 class="page-title" id="pageTitle">Network Dashboard</h1>
+            <div class="page-subtitle" id="pageSubtitle">Real-time network overview</div>
+        </div>
+
+        <div class="d-flex align-items-center gap-3" id="headerControls">
+
+            <button class="mode-toggle-btn" id="net-mode-toggle" title="Switch between simulated lab and real network">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                <span id="net-mode-label">Simulated Lab</span>
+            </button>
+
+            <button class="theme-toggle-btn" id="theme-toggle" title="Toggle dark / light mode">
+                <svg id="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+                <svg id="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:none"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+            </button>
+
+            <button id="langToggle">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20a15 15 0 0 1 0-20"/></svg>
+                <span id="langLabel">العربية</span>
+            </button>
+
+            <span class="online" id="online-badge">● System Online</span>
+
+            <div class="avatar">A</div>
+
+        </div>
+
+    </header>
+
+    <div class="content">
+
+        <!-- ============================================================
+             DASHBOARD VIEW
+             ============================================================ -->
+        <section id="dashboardView">
+
+            <div class="row g-3 mb-4">
+                <div class="col-xl-3 col-md-6">
+                    <div class="card-custom stat-card">
+                        <div class="stat-label" data-i18n="statDevices">Devices</div>
+                        <div class="stat-value" id="stat-devices">--</div>
+                        <div class="stat-small" id="stat-devices-sub">--</div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6">
+                    <div class="card-custom stat-card">
+                        <div class="stat-label" data-i18n="statHealth">Network Health</div>
+                        <div class="stat-value" id="stat-health">--</div>
+                        <div class="stat-small" id="stat-health-sub">--</div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6">
+                    <div class="card-custom stat-card">
+                        <div class="stat-label" data-i18n="statAlerts">Active Alerts</div>
+                        <div class="stat-value accent" id="stat-alerts">--</div>
+                        <div class="stat-small" data-i18n="statAlertsSub">Requires attention</div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6">
+                    <div class="card-custom stat-card">
+                        <div class="stat-label" data-i18n="statTraffic">Network Traffic</div>
+                        <div class="stat-value" id="stat-traffic">--</div>
+                        <div class="stat-small" data-i18n="statTrafficSub">Current traffic</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-4 mb-4">
+
+                <div class="col-lg-8">
+                    <div class="card-custom p-4">
+                        <div class="section-header">
+                            <div>
+                                <h5 data-i18n="topologyTitle">Network Topology</h5>
+                                <p data-i18n="topologySub">Current infrastructure</p>
+                            </div>
+                            <button class="btn-light-netmind" id="view-network-btn" data-i18n="refresh">Refresh</button>
+                        </div>
+
+                        <div class="network sim-only" id="topology-container">
+                            <div class="empty-note">Loading topology…</div>
+                        </div>
+
+                        <div class="real-only" id="real-network-summary">
+                            <div class="network" style="flex-direction: row; justify-content: space-around; flex-wrap: wrap; gap: 24px;">
+                                <div style="text-align:center;">
+                                    <div class="stat-value" id="real-subnet-label" style="font-size:18px;">--</div>
+                                    <div class="stat-small" data-i18n="subnetScanned">Subnet scanned</div>
+                                </div>
+                                <div style="text-align:center;">
+                                    <div class="stat-value" id="real-count-label">--</div>
+                                    <div class="stat-small" data-i18n="devicesResponding">Devices responding</div>
+                                </div>
+                                <div style="text-align:center;">
+                                    <div class="stat-value" id="real-method-label" style="font-size:18px;">--</div>
+                                    <div class="stat-small" data-i18n="scanMethod">Scan method</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-4">
+                    <div class="card-custom p-4 h-100">
+                        <div class="section-header">
+                            <div>
+                                <h5 data-i18n="alertsTitle">Recent Alerts</h5>
+                                <p data-i18n="alertsSub">Latest network events</p>
+                            </div>
+                            <span class="accent fw-semibold" id="alerts-count-badge">0</span>
+                        </div>
+
+                        <div id="alerts-list"></div>
+
+                        <button class="btn-netmind w-100 mt-3" data-bs-toggle="modal" data-bs-target="#allAlertsModal" data-i18n="viewAllAlerts">View All Alerts</button>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="card-custom p-4 mb-4">
+                <div class="section-header">
+                    <div>
+                        <h5 data-i18n="devicesTitle">Network Devices</h5>
+                        <p data-i18n="devicesSub">Connected infrastructure (from registry.json)</p>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead>
+                            <tr id="devices-thead-row">
+                                <th data-i18n="colDevice">Device</th>
+                                <th data-i18n="colType">Type</th>
+                                <th data-i18n="colIp">IP Address</th>
+                                <th data-i18n="colStatus">Status</th>
+                                <th data-i18n="colCpu">CPU</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="devices-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card-custom p-4">
+                <div class="section-header">
+                    <div>
+                        <h5 data-i18n="aiTitle">NetMind AI</h5>
+                        <p data-i18n="aiSub">Intelligent network assistant</p>
+                    </div>
+                    <a class="btn-netmind" href="#" data-view="chat" data-i18n="openAssistant">Open Assistant</a>
+                </div>
+
+                <div class="ai-box">
+                    <div class="ai-icon">AI</div>
+                    <div class="ai-text" id="ai-summary">Analyzing network state…</div>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- ============================================================
+             CHAT VIEW
+             ============================================================ -->
+        <section id="chatView" style="display:none">
+            <div id="chatApp">
+
+                <div id="welcome">
+                    <h1 id="welcomeTitle">Welcome to NetMind</h1>
+                    <p id="welcomeSub">Ask about any device on the network — check status, look up an IP, or turn something on or off.</p>
+                    <div id="examples"></div>
+                </div>
+
+                <div id="chat"></div>
+
+                <div id="inputBar">
+                    <input id="inputBox" type="text" />
+                    <button id="sendBtn"></button>
+                </div>
+
+            </div>
+        </section>
+
     </div>
-  </div>
 
-  <div id="welcome">
-    <h1 id="welcomeTitle">Welcome to NetMind</h1>
-    <p id="welcomeSub">Ask about any device on the network — check status, look up an IP, or turn something on or off.</p>
-    <div id="examples"></div>
-  </div>
+</main>
 
-  <div id="chat"></div>
+<!-- ================= ALL ALERTS MODAL ================= -->
 
-  <div id="inputBar">
-    <input id="inputBox" type="text" />
-    <button id="sendBtn"></button>
-  </div>
+<div class="modal fade" id="allAlertsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" data-i18n="allAlertsTitle">All Alerts</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="all-alerts-list"></div>
+        </div>
+    </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
 <script>
-const STRINGS = {
-  en: {
-    dir: 'ltr', toggleLabel: 'العربية',
-    welcomeTitle: 'Welcome to NetMind',
-    welcomeSub: "Ask about any device on the network — check status, look up an IP, or turn something on or off.",
-    placeholder: 'Ask about any device on the network...',
-    send: 'Send',
-    error: 'Something went wrong connecting to the server.',
-    examples: [
-      "What's Khalid's IP address?",
-      "List all devices",
-      "Turn off Khalil's network",
-      "Is host-ahmed online?"
-    ]
-  },
-  ar: {
-    dir: 'rtl', toggleLabel: 'English',
-    welcomeTitle: 'مرحبًا بك في نتمايند',
-    welcomeSub: 'اسأل عن أي جهاز بالشبكة — تحقق من حالته، اعرف عنوان الـ IP، أو شغّله أو أطفئه.',
-    placeholder: 'اسأل عن أي جهاز بالشبكة...',
-    send: 'إرسال',
-    error: 'صار خطأ بالاتصال بالسيرفر.',
-    examples: [
-      'وش عنوان IP لخالد؟',
-      'اعرض كل الأجهزة',
-      'شغّل شبكة خليل',
-      'هل host-ahmed شغال؟'
-    ]
-  }
-};
+(function () {
+    "use strict";
 
-const MODE_LABELS = {
-  simulated: { en: 'Simulated', ar: 'محاكاة' },
-  real: { en: 'Real Network', ar: 'شبكة حقيقية' }
-};
+    /* =====================================================================
+       SHARED REST CLIENT — every API call either view makes goes through
+       this one object. Endpoints/payloads are byte-for-byte what the
+       previous separate index.html / Dashboard.html already sent, so the
+       backend (web_server.py) needs ZERO changes.
+       ===================================================================== */
+    var Api = {
+        base: "", // same-origin: this page is served by web_server.py itself
 
-let lang = 'en';
-let mode = 'simulated';
-const sessionId = crypto.randomUUID();
-const chat = document.getElementById('chat');
-const welcome = document.getElementById('welcome');
-const input = document.getElementById('inputBox');
-const btn = document.getElementById('sendBtn');
-const examplesEl = document.getElementById('examples');
+        chat: function (sessionId, message, mode) {
+            return fetch(Api.base + "/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ session_id: sessionId, message: message, mode: mode })
+            }).then(function (res) { return res.json(); });
+        },
 
-function applyModeLabel() {
-  document.getElementById('modeSimBtn').textContent = MODE_LABELS.simulated[lang];
-  document.getElementById('modeRealBtn').textContent = MODE_LABELS.real[lang];
-  document.getElementById('modeSimBtn').classList.toggle('active', mode === 'simulated');
-  document.getElementById('modeRealBtn').classList.toggle('active', mode === 'real');
-}
+        devices: function (mode) {
+            return fetchJson(Api.base + (mode === "real" ? "/api/real-devices" : "/api/devices"));
+        },
 
-document.querySelectorAll('.mode-segment').forEach(segment => {
-  segment.addEventListener('click', () => {
-    mode = segment.dataset.mode;
-    applyModeLabel();
-  });
-});
+        alerts: function (mode) {
+            return fetchJson(Api.base + (mode === "real" ? "/api/real-alerts" : "/api/alerts"));
+        },
 
-function applyLang() {
-  const s = STRINGS[lang];
-  document.documentElement.lang = lang;
-  document.documentElement.dir = s.dir;
-  document.getElementById('langLabel').textContent = s.toggleLabel;
-  document.getElementById('welcomeTitle').textContent = s.welcomeTitle;
-  document.getElementById('welcomeSub').textContent = s.welcomeSub;
-  input.placeholder = s.placeholder;
-  btn.textContent = s.send;
-  applyModeLabel();
-  examplesEl.innerHTML = '';
-  s.examples.forEach(text => {
-    const div = document.createElement('div');
-    div.className = 'example';
-    div.textContent = text;
-    div.addEventListener('click', () => { input.value = text; send(); });
-    examplesEl.appendChild(div);
-  });
-}
+        power: function (id, state) {
+            return fetch(Api.base + "/api/devices/" + encodeURIComponent(id) + "/power", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ state: state })
+            });
+        }
+    };
 
-document.getElementById('langToggle').addEventListener('click', () => {
-  lang = lang === 'en' ? 'ar' : 'en';
-  applyLang();
-});
-
-function applyTheme(theme) {
-  document.documentElement.setAttribute('data-theme', theme);
-  document.getElementById('themeIconSun').style.display = theme === 'dark' ? 'block' : 'none';
-  document.getElementById('themeIconMoon').style.display = theme === 'dark' ? 'none' : 'block';
-  localStorage.setItem('netmind-theme', theme);
-}
-
-const savedTheme = localStorage.getItem('netmind-theme');
-const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-applyTheme(savedTheme || (systemPrefersDark ? 'dark' : 'light'));
-
-document.getElementById('themeToggle').addEventListener('click', () => {
-  const current = document.documentElement.getAttribute('data-theme');
-  applyTheme(current === 'dark' ? 'light' : 'dark');
-});
-
-function escapeHtml(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function isTableRow(line) {
-  return /^\s*\|.*\|\s*$/.test(line);
-}
-function isSeparatorRow(line) {
-  return /^\s*\|[\s:|-]+\|\s*$/.test(line) && line.includes('-');
-}
-function tableCells(line) {
-  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
-}
-function renderTable(lines) {
-  const header = tableCells(lines[0]);
-  const rows = lines.slice(2).map(tableCells);
-  let html = '<div class="msg-table-wrap"><table class="msg-table"><thead><tr>';
-  header.forEach(h => { html += `<th>${escapeHtml(h)}</th>`; });
-  html += '</tr></thead><tbody>';
-  rows.forEach(row => {
-    html += '<tr>';
-    row.forEach(cell => { html += `<td>${escapeHtml(cell)}</td>`; });
-    html += '</tr>';
-  });
-  html += '</tbody></table></div>';
-  return html;
-}
-function formatLine(line) {
-  let safe = escapeHtml(line);
-  safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
-  safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  return safe;
-}
-function formatMessage(text) {
-  const lines = text.split('\n');
-  let html = '';
-  let i = 0;
-  let hasTable = false;
-  while (i < lines.length) {
-    if (isTableRow(lines[i]) && lines[i + 1] !== undefined && isSeparatorRow(lines[i + 1])) {
-      hasTable = true;
-      const tableLines = [lines[i], lines[i + 1]];
-      let j = i + 2;
-      while (j < lines.length && isTableRow(lines[j])) {
-        tableLines.push(lines[j]);
-        j++;
-      }
-      html += renderTable(tableLines);
-      i = j;
-    } else {
-      html += formatLine(lines[i]) + '<br>';
-      i++;
+    function fetchJson(url) {
+        return fetch(url).then(function (res) {
+            if (!res.ok) throw new Error("HTTP " + res.status + " from " + url);
+            return res.json();
+        });
     }
-  }
-  return { html, hasTable };
-}
 
-function addMsg(text, cls, raw) {
-  const div = document.createElement('div');
-  div.className = 'msg ' + cls;
-  if (raw) {
-    const { html, hasTable } = formatMessage(text);
-    div.innerHTML = html;
-    if (hasTable) div.classList.add('has-table');
-  } else {
-    div.textContent = text;
-  }
-  chat.appendChild(div);
-  chat.scrollTop = chat.scrollHeight;
-  return div;
-}
+    /* =====================================================================
+       SHARED THEME (dark/light) — identical to what index.html had before.
+       ===================================================================== */
+    function applyTheme(theme) {
+        document.documentElement.setAttribute("data-theme", theme);
+        document.getElementById("theme-icon-sun").style.display = theme === "dark" ? "none" : "block";
+        document.getElementById("theme-icon-moon").style.display = theme === "dark" ? "block" : "none";
+        try { window.localStorage.setItem("netmind-theme", theme); } catch (e) {}
+    }
 
-async function send() {
-  const message = input.value.trim();
-  if (!message) return;
+    function initTheme() {
+        var saved = null;
+        try { saved = window.localStorage.getItem("netmind-theme"); } catch (e) {}
+        var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        applyTheme(saved || (prefersDark ? "dark" : "light"));
 
-  if (!chat.classList.contains('active')) {
-    welcome.classList.add('hidden');
-    chat.classList.add('active');
-  }
+        document.getElementById("theme-toggle").addEventListener("click", function () {
+            var current = document.documentElement.getAttribute("data-theme");
+            applyTheme(current === "dark" ? "light" : "dark");
+        });
+    }
 
-  addMsg(message, 'user');
-  input.value = '';
-  btn.disabled = true;
-  const placeholder = addMsg('...', 'bot');
+    /* =====================================================================
+       SHARED NETWORK MODE (simulated / real) — previously the Dashboard had
+       its own toggle+localStorage key, and the Chat view had a completely
+       separate, non-persisted mode selector. Unified into one here, so
+       switching mode in either view updates the other and both REST calls.
+       ===================================================================== */
+    var netMode = "simulated"; // "simulated" | "real"
 
-  try {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: sessionId, message, mode })
+    function applyNetMode(mode) {
+        netMode = mode;
+        document.body.setAttribute("data-net-mode", mode);
+        document.getElementById("net-mode-label").textContent = mode === "real" ? I18N.t("netReal") : I18N.t("netSimulated");
+        document.getElementById("net-mode-toggle").classList.toggle("real-active", mode === "real");
+
+        var row = document.getElementById("devices-thead-row");
+        if (row) {
+            if (mode === "real") {
+                row.innerHTML = "<th>" + I18N.t("colHostname") + "</th><th>" + I18N.t("colIp") + "</th><th>" + I18N.t("colMac") + "</th><th>" + I18N.t("colStatus") + "</th><th></th><th></th>";
+            } else {
+                row.innerHTML = "<th>" + I18N.t("colDevice") + "</th><th>" + I18N.t("colType") + "</th><th>" + I18N.t("colIp") + "</th><th>" + I18N.t("colStatus") + "</th><th>" + I18N.t("colCpu") + "</th><th></th>";
+            }
+        }
+
+        try { window.localStorage.setItem("netmind-net-mode", mode); } catch (e) {}
+        Dashboard.refresh();
+    }
+
+    function initNetMode() {
+        var saved = null;
+        try { saved = window.localStorage.getItem("netmind-net-mode"); } catch (e) {}
+        applyNetMode(saved === "real" ? "real" : "simulated");
+
+        document.getElementById("net-mode-toggle").addEventListener("click", function () {
+            applyNetMode(netMode === "simulated" ? "real" : "simulated");
+        });
+    }
+
+    /* =====================================================================
+       SHARED LANGUAGE HANDLING
+       ===================================================================== */
+    var STRINGS = {
+        en: {
+            dir: "ltr", toggleLabel: "العربية",
+            navOverview: "Overview", navDashboard: "Dashboard", navChat: "AI Chat",
+            navDevices: "Devices", navAlerts: "Alerts", navLogs: "Logs",
+            navIntelligence: "Intelligence", navAiAssistant: "AI Assistant",
+            navReports: "Reports", navRefresh: "Refresh Now",
+            dashboardTitle: "Network Dashboard", dashboardSub: "Real-time network overview",
+            chatTitle: "AI Assistant", chatSub: "Ask about any device on the network",
+            netSimulated: "Simulated Lab", netReal: "Real Network",
+            statDevices: "Devices", statHealth: "Network Health", statAlerts: "Active Alerts",
+            statAlertsSub: "Requires attention", statTraffic: "Network Traffic", statTrafficSub: "Current traffic",
+            topologyTitle: "Network Topology", topologySub: "Current infrastructure", refresh: "Refresh",
+            subnetScanned: "Subnet scanned", devicesResponding: "Devices responding", scanMethod: "Scan method",
+            alertsTitle: "Recent Alerts", alertsSub: "Latest network events", viewAllAlerts: "View All Alerts",
+            allAlertsTitle: "All Alerts",
+            devicesTitle: "Network Devices", devicesSub: "Connected infrastructure (from registry.json)",
+            colDevice: "Device", colType: "Type", colIp: "IP Address", colStatus: "Status", colCpu: "CPU",
+            colHostname: "Hostname", colMac: "MAC Address",
+            aiTitle: "NetMind AI", aiSub: "Intelligent network assistant", openAssistant: "Open Assistant",
+            welcomeTitle: "Welcome to NetMind",
+            welcomeSub: "Ask about any device on the network — check status, look up an IP, or turn something on or off.",
+            placeholder: "Ask about any device on the network...", send: "Send",
+            error: "Something went wrong connecting to the server.",
+            backendDown: "Could not reach the backend.",
+            backendDownHint: "Could not reach the backend. Make sure web_server.py is running.",
+            noAlertsSim: "No alerts — network is quiet.",
+            noAlertsReal: "Real-network mode is read-only monitoring — no alerts.",
+            noAlerts: "No alerts.",
+            noDevicesReal: "No real network scan results yet.",
+            noDevicesSim: "No devices found in registry.json.",
+            examples: [
+                "What's Khalid's IP address?",
+                "List all devices",
+                "Turn off Khalil's network",
+                "Is host-ahmed online?"
+            ]
+        },
+        ar: {
+            dir: "rtl", toggleLabel: "English",
+            navOverview: "نظرة عامة", navDashboard: "الداشبورد", navChat: "محادثة AI",
+            navDevices: "الأجهزة", navAlerts: "التنبيهات", navLogs: "السجلات",
+            navIntelligence: "الذكاء", navAiAssistant: "مساعد AI",
+            navReports: "التقارير", navRefresh: "تحديث الآن",
+            dashboardTitle: "لوحة الشبكة", dashboardSub: "نظرة لحظية على الشبكة",
+            chatTitle: "مساعد NetMind", chatSub: "اسأل عن أي جهاز بالشبكة",
+            netSimulated: "شبكة محاكاة", netReal: "شبكة حقيقية",
+            statDevices: "الأجهزة", statHealth: "صحة الشبكة", statAlerts: "تنبيهات نشطة",
+            statAlertsSub: "تحتاج مراجعة", statTraffic: "حركة الشبكة", statTrafficSub: "الحركة الحالية",
+            topologyTitle: "توبولوجي الشبكة", topologySub: "البنية الحالية", refresh: "تحديث",
+            subnetScanned: "النطاق الممسوح", devicesResponding: "أجهزة مستجيبة", scanMethod: "طريقة الفحص",
+            alertsTitle: "آخر التنبيهات", alertsSub: "أحدث أحداث الشبكة", viewAllAlerts: "عرض كل التنبيهات",
+            allAlertsTitle: "كل التنبيهات",
+            devicesTitle: "أجهزة الشبكة", devicesSub: "البنية المتصلة (من registry.json)",
+            colDevice: "الجهاز", colType: "النوع", colIp: "عنوان IP", colStatus: "الحالة", colCpu: "المعالج",
+            colHostname: "اسم الجهاز", colMac: "عنوان MAC",
+            aiTitle: "NetMind AI", aiSub: "مساعد الشبكة الذكي", openAssistant: "فتح المساعد",
+            welcomeTitle: "مرحبًا بك في نتمايند",
+            welcomeSub: "اسأل عن أي جهاز بالشبكة — تحقق من حالته، اعرف عنوان الـ IP، أو شغّله أو أطفئه.",
+            placeholder: "اسأل عن أي جهاز بالشبكة...", send: "إرسال",
+            error: "صار خطأ بالاتصال بالسيرفر.",
+            backendDown: "تعذّر الاتصال بالباك اند.",
+            backendDownHint: "تعذّر الاتصال بالباك اند. تأكد أن web_server.py شغّال.",
+            noAlertsSim: "لا توجد تنبيهات — الشبكة هادئة.",
+            noAlertsReal: "وضع الشبكة الحقيقية مراقبة فقط — بدون تنبيهات.",
+            noAlerts: "لا توجد تنبيهات.",
+            noDevicesReal: "لا توجد نتائج فحص للشبكة الحقيقية بعد.",
+            noDevicesSim: "لا توجد أجهزة في registry.json.",
+            examples: [
+                "وش عنوان IP لخالد؟",
+                "اعرض كل الأجهزة",
+                "شغّل شبكة خليل",
+                "هل host-ahmed شغال؟"
+            ]
+        }
+    };
+
+    var lang = "en";
+
+    var I18N = {
+        t: function (key) { return STRINGS[lang][key]; }
+    };
+
+    function applyLang() {
+        var s = STRINGS[lang];
+        document.documentElement.lang = lang;
+        document.documentElement.dir = s.dir;
+        document.getElementById("langLabel").textContent = s.toggleLabel;
+
+        document.querySelectorAll("[data-i18n]").forEach(function (el) {
+            var key = el.getAttribute("data-i18n");
+            if (s[key] !== undefined) el.textContent = s[key];
+        });
+
+        document.getElementById("welcomeTitle").textContent = s.welcomeTitle;
+        document.getElementById("welcomeSub").textContent = s.welcomeSub;
+        document.getElementById("inputBox").placeholder = s.placeholder;
+        document.getElementById("sendBtn").textContent = s.send;
+
+        examplesEl.innerHTML = "";
+        s.examples.forEach(function (text) {
+            var div = document.createElement("div");
+            div.className = "example";
+            div.textContent = text;
+            div.addEventListener("click", function () { inputBox.value = text; Chat.send(); });
+            examplesEl.appendChild(div);
+        });
+
+        updatePageHeader();
+        applyNetMode(netMode); // refresh mode label + table header text in new language
+        Dashboard.renderAll(); // re-render dynamic labels (status text, AI summary, etc.)
+    }
+
+    document.getElementById("langToggle").addEventListener("click", function () {
+        lang = lang === "en" ? "ar" : "en";
+        applyLang();
     });
-    const data = await res.json();
-    const { html, hasTable } = formatMessage(data.reply);
-    placeholder.innerHTML = html;
-    if (hasTable) placeholder.classList.add('has-table');
-  } catch (e) {
-    placeholder.textContent = STRINGS[lang].error;
-  }
-  btn.disabled = false;
-}
 
-btn.addEventListener('click', send);
-input.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+    /* =====================================================================
+       SHARED NAVIGATION (view switching) — "one entry point provides chat
+       and dashboard views" happens here: no page reload, just show/hide.
+       ===================================================================== */
+    var currentView = "dashboard";
 
-applyLang();
-applyModeLabel();
+    function updatePageHeader() {
+        var s = STRINGS[lang];
+        document.getElementById("pageTitle").textContent = currentView === "chat" ? s.chatTitle : s.dashboardTitle;
+        document.getElementById("pageSubtitle").textContent = currentView === "chat" ? s.chatSub : s.dashboardSub;
+    }
+
+    function showView(view) {
+        currentView = view;
+
+        document.getElementById("dashboardView").style.display = view === "dashboard" ? "" : "none";
+        document.getElementById("chatView").style.display = view === "chat" ? "" : "none";
+
+        document.querySelectorAll('.nav-link[data-view]').forEach(function (el) {
+            el.classList.toggle("active", el.getAttribute("data-view") === view);
+        });
+
+        updatePageHeader();
+
+        if (view === "dashboard") {
+            Dashboard.refresh();
+        } else {
+            document.getElementById("inputBox").focus();
+        }
+    }
+
+    function initNav() {
+        document.querySelectorAll('[data-view]').forEach(function (el) {
+            el.addEventListener("click", function (e) {
+                e.preventDefault();
+                showView(el.getAttribute("data-view"));
+            });
+        });
+    }
+
+    /* =====================================================================
+       CHAT VIEW LOGIC (same behaviour as the previous index.html)
+       ===================================================================== */
+    var sessionId = crypto.randomUUID();
+    var chatEl, welcomeEl, inputBox, sendBtn, examplesEl;
+
+    function escapeHtml(str) {
+        return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+    function isTableRow(line) { return /^\s*\|.*\|\s*$/.test(line); }
+    function isSeparatorRow(line) { return /^\s*\|[\s:|-]+\|\s*$/.test(line) && line.includes("-"); }
+    function tableCells(line) { return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(function (c) { return c.trim(); }); }
+    function renderTable(lines) {
+        var header = tableCells(lines[0]);
+        var rows = lines.slice(2).map(tableCells);
+        var html = '<div class="msg-table-wrap"><table class="msg-table"><thead><tr>';
+        header.forEach(function (h) { html += "<th>" + escapeHtml(h) + "</th>"; });
+        html += "</tr></thead><tbody>";
+        rows.forEach(function (row) {
+            html += "<tr>";
+            row.forEach(function (cell) { html += "<td>" + escapeHtml(cell) + "</td>"; });
+            html += "</tr>";
+        });
+        html += "</tbody></table></div>";
+        return html;
+    }
+    function formatLine(line) {
+        var safe = escapeHtml(line);
+        safe = safe.replace(/`([^`]+)`/g, "<code>$1</code>");
+        safe = safe.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+        return safe;
+    }
+    function formatMessage(text) {
+        var lines = text.split("\n");
+        var html = "";
+        var i = 0;
+        var hasTable = false;
+        while (i < lines.length) {
+            if (isTableRow(lines[i]) && lines[i + 1] !== undefined && isSeparatorRow(lines[i + 1])) {
+                hasTable = true;
+                var tableLines = [lines[i], lines[i + 1]];
+                var j = i + 2;
+                while (j < lines.length && isTableRow(lines[j])) { tableLines.push(lines[j]); j++; }
+                html += renderTable(tableLines);
+                i = j;
+            } else {
+                html += formatLine(lines[i]) + "<br>";
+                i++;
+            }
+        }
+        return { html: html, hasTable: hasTable };
+    }
+    function addMsg(text, cls, raw) {
+        var div = document.createElement("div");
+        div.className = "msg " + cls;
+        if (raw) {
+            var r = formatMessage(text);
+            div.innerHTML = r.html;
+            if (r.hasTable) div.classList.add("has-table");
+        } else {
+            div.textContent = text;
+        }
+        chatEl.appendChild(div);
+        chatEl.scrollTop = chatEl.scrollHeight;
+        return div;
+    }
+
+    var Chat = {
+        send: function () {
+            var message = inputBox.value.trim();
+            if (!message) return;
+
+            if (!chatEl.classList.contains("active")) {
+                welcomeEl.classList.add("hidden");
+                chatEl.classList.add("active");
+            }
+
+            addMsg(message, "user");
+            inputBox.value = "";
+            sendBtn.disabled = true;
+            var placeholder = addMsg("...", "bot");
+
+            Api.chat(sessionId, message, netMode).then(function (data) {
+                var r = formatMessage(data.reply);
+                placeholder.innerHTML = r.html;
+                if (r.hasTable) placeholder.classList.add("has-table");
+            }).catch(function () {
+                placeholder.textContent = STRINGS[lang].error;
+            }).then(function () {
+                sendBtn.disabled = false;
+            });
+        }
+    };
+
+    /* =====================================================================
+       DASHBOARD VIEW LOGIC (same behaviour as the previous Dashboard.html,
+       plus a fix: refreshData() now ignores a response that arrives after
+       the user has already switched mode again — this is exactly what was
+       causing the dashboard to flash simulated-lab data while the toggle
+       still said "Real Network": the real-network scan (6s+ for mDNS) is
+       slower than the 5s poll interval, so an old in-flight request could
+       resolve after a newer one and silently overwrite the current state.
+       ===================================================================== */
+    var POLL_INTERVAL_MS = 5000;
+
+    var TYPE_LABELS = {
+        router: "Router", firewall: "Firewall", host: "Host", camera: "Camera",
+        switch: "Switch", server: "Server", "real-device": "Device"
+    };
+
+    var dashState = { devices: [], alerts: [], connected: false, lastError: null };
+
+    function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
+
+    function timeAgo(ts) {
+        var diff = Math.max(0, Date.now() - ts);
+        var mins = Math.floor(diff / 60000);
+        if (mins < 1) return lang === "ar" ? "الآن" : "now";
+        if (mins < 60) return mins + (lang === "ar" ? " د" : "m");
+        var hrs = Math.floor(mins / 60);
+        if (hrs < 24) return hrs + (lang === "ar" ? " س" : "h");
+        return Math.floor(hrs / 24) + (lang === "ar" ? " ي" : "d");
+    }
+
+    function statusLabel(status) {
+        if (status === "online") return lang === "ar" ? "متصل" : "Online";
+        if (status === "warning") return lang === "ar" ? "تحذير" : "Warning";
+        return lang === "ar" ? "غير متصل" : "Offline";
+    }
+    function statusClass(status) {
+        if (status === "online") return "status-online";
+        if (status === "warning") return "status-warning";
+        return "status-offline";
+    }
+
+    var Dashboard = {
+        refresh: function () {
+            // Don't hammer the backend (especially the slow real-network
+            // scan) while the user is on the Chat view.
+            if (currentView !== "dashboard") return;
+
+            var requestedMode = netMode;
+            Promise.all([Api.devices(requestedMode), Api.alerts(requestedMode)]).then(function (results) {
+                if (requestedMode !== netMode) return; // stale — mode changed while this was in flight
+                dashState.devices = results[0] || [];
+                dashState.alerts = (results[1] || []).sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+                dashState.connected = true;
+                dashState.lastError = null;
+                Dashboard.renderAll();
+            }).catch(function (err) {
+                if (requestedMode !== netMode) return;
+                dashState.connected = false;
+                dashState.lastError = err.message || String(err);
+                Dashboard.renderConnectionState();
+            });
+        },
+
+        computeStats: function () {
+            var total = dashState.devices.length;
+            var online = dashState.devices.filter(function (d) { return d.status !== "offline"; }).length;
+            var offline = total - online;
+            var avgCpu = total ? dashState.devices.reduce(function (s, d) { return s + (d.cpu || 0); }, 0) / total : 0;
+            var health = total ? Math.round(clamp(100 - avgCpu * 0.45 - offline * 6, 0, 100)) : 0;
+            var traffic = dashState.devices.reduce(function (s, d) { return s + (d.traffic || 0); }, 0);
+            return { total: total, online: online, offline: offline, health: health, traffic: traffic };
+        },
+
+        renderConnectionState: function () {
+            var badge = document.getElementById("online-badge");
+            badge.textContent = "● " + STRINGS[lang].backendDown;
+            badge.classList.add("degraded");
+
+            var tbody = document.getElementById("devices-tbody");
+            if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="empty-note">' + STRINGS[lang].backendDownHint + " (" + (dashState.lastError || "") + ")</td></tr>";
+            var ai = document.getElementById("ai-summary");
+            if (ai) ai.innerHTML = "<strong>" + STRINGS[lang].backendDownHint + "</strong>";
+        },
+
+        renderStats: function () {
+            var s = this.computeStats();
+            document.getElementById("stat-devices").textContent = s.total;
+            document.getElementById("stat-devices-sub").textContent = s.online + " online · " + s.offline + " offline";
+            document.getElementById("stat-health").textContent = s.total ? (s.health + "%") : "--";
+            document.getElementById("stat-health-sub").textContent = s.health >= 90 ? "Excellent condition" : (s.health >= 70 ? "Good condition" : "Needs attention");
+            document.getElementById("stat-alerts").textContent = dashState.alerts.length;
+            document.getElementById("stat-traffic").textContent = s.traffic.toFixed(1) + " GB/s";
+
+            var badge = document.getElementById("online-badge");
+            if (!dashState.connected) return;
+            if (s.offline > 0 || s.health < 80) {
+                badge.textContent = "● " + (s.offline > 0 ? s.offline + " Device(s) Down" : "Degraded Performance");
+                badge.classList.add("degraded");
+            } else {
+                badge.textContent = "● System Online";
+                badge.classList.remove("degraded");
+            }
+        },
+
+        renderTopology: function () {
+            if (netMode === "real") {
+                document.getElementById("real-subnet-label").textContent =
+                    dashState.devices.length ? dashState.devices[0].ip.replace(/\.\d+$/, ".0/24") : "--";
+                document.getElementById("real-count-label").textContent = dashState.devices.length;
+                var hasMac = dashState.devices.some(function (d) { return d.mac; });
+                document.getElementById("real-method-label").textContent = hasMac ? "ARP" : "Ping";
+                return;
+            }
+
+            var container = document.getElementById("topology-container");
+            container.innerHTML = "";
+            if (dashState.devices.length === 0) {
+                container.innerHTML = '<div class="empty-note">' + STRINGS[lang].noDevicesSim + "</div>";
+                return;
+            }
+            var router = dashState.devices.find(function (d) { return d.type === "router"; });
+            var rest = dashState.devices.filter(function (d) { return d.type !== "router"; });
+
+            function nodeEl(d) {
+                var el = document.createElement("div");
+                el.className = "node" + (d.type === "router" ? " node-main" : "");
+                if (d.status === "warning") el.className += " node-warning";
+                if (d.status === "offline") el.className += " node-offline";
+                var sub = d.status === "offline" ? "offline" : d.cpu + "% cpu";
+                el.innerHTML = d.name + "<small>" + sub + "</small>";
+                return el;
+            }
+            if (router) {
+                container.appendChild(nodeEl(router));
+                var conn = document.createElement("div");
+                conn.className = "connection";
+                container.appendChild(conn);
+            }
+            var wrap = document.createElement("div");
+            wrap.className = "nodes";
+            rest.forEach(function (d) { wrap.appendChild(nodeEl(d)); });
+            container.appendChild(wrap);
+        },
+
+        renderAlerts: function () {
+            var list = document.getElementById("alerts-list");
+            document.getElementById("alerts-count-badge").textContent = dashState.alerts.length;
+            list.innerHTML = "";
+            if (dashState.alerts.length === 0) {
+                list.innerHTML = '<div class="empty-note">' + (netMode === "real" ? STRINGS[lang].noAlertsReal : STRINGS[lang].noAlertsSim) + "</div>";
+                return;
+            }
+            dashState.alerts.slice(0, 3).forEach(function (a) {
+                var div = document.createElement("div");
+                div.className = "alert-item";
+                div.innerHTML = '<div class="alert-title"><span class="dot"></span>' + a.title + "</div>" +
+                    '<div class="alert-time">' + (a.detail || "") + " · " + timeAgo(a.ts || Date.now()) + "</div>";
+                list.appendChild(div);
+            });
+        },
+
+        renderAlertsModal: function () {
+            var list = document.getElementById("all-alerts-list");
+            list.innerHTML = "";
+            if (dashState.alerts.length === 0) {
+                list.innerHTML = '<div class="empty-note">' + STRINGS[lang].noAlerts + "</div>";
+                return;
+            }
+            dashState.alerts.forEach(function (a) {
+                var div = document.createElement("div");
+                div.className = "alert-item";
+                div.innerHTML = '<div class="alert-title"><span class="dot"></span>' + a.title + "</div>" +
+                    '<div class="alert-time">' + (a.detail || "") + " · " + timeAgo(a.ts || Date.now()) + "</div>";
+                list.appendChild(div);
+            });
+        },
+
+        renderDevicesTable: function () {
+            var tbody = document.getElementById("devices-tbody");
+            tbody.innerHTML = "";
+            if (dashState.devices.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="empty-note">' + (netMode === "real" ? STRINGS[lang].noDevicesReal : STRINGS[lang].noDevicesSim) + "</td></tr>";
+                return;
+            }
+
+            dashState.devices.forEach(function (d) {
+                var tr = document.createElement("tr");
+
+                if (netMode === "real") {
+                    tr.innerHTML =
+                        '<td class="fw-semibold">' + (d.name || "--") + "</td>" +
+                        "<td>" + (d.ip || "") + "</td>" +
+                        "<td>" + (d.mac || "--") + "</td>" +
+                        '<td><span class="status ' + statusClass(d.status) + '">' + statusLabel(d.status) + "</span></td>" +
+                        "<td></td><td></td>";
+                } else {
+                    var cpuDisplay = d.status === "offline"
+                        ? "--"
+                        : '<span class="cpu-bar-track"><span class="cpu-bar-fill" style="width:' + d.cpu + '%"></span></span>' + d.cpu + "%";
+                    var canPower = d.type !== "router";
+                    var powerBtn = canPower
+                        ? '<button class="btn-light-netmind power-toggle" data-id="' + d.id + '" data-action="' + (d.status === "offline" ? "on" : "off") + '">' +
+                          (d.status === "offline" ? "Power On" : "Power Off") + "</button>"
+                        : "";
+                    tr.innerHTML =
+                        '<td class="fw-semibold">' + d.name + "</td>" +
+                        "<td>" + (TYPE_LABELS[d.type] || d.type || "") + "</td>" +
+                        "<td>" + (d.ip || "") + "</td>" +
+                        '<td><span class="status ' + statusClass(d.status) + '">' + statusLabel(d.status) + "</span></td>" +
+                        "<td>" + cpuDisplay + "</td>" +
+                        "<td>" + powerBtn + "</td>";
+                }
+                tbody.appendChild(tr);
+            });
+        },
+
+        renderAiSummary: function () {
+            if (!dashState.connected) return;
+            var s = this.computeStats();
+            var el = document.getElementById("ai-summary");
+
+            if (netMode === "real") {
+                el.innerHTML = "<strong>" + s.total + " device(s) found on the real network.</strong> Read-only monitoring mode — no power control or firewall data available here.";
+                return;
+            }
+
+            var pieces = [];
+            var offlineDevs = dashState.devices.filter(function (d) { return d.status === "offline"; });
+            var warnDevs = dashState.devices.filter(function (d) { return d.status === "warning"; });
+            var lead = dashState.alerts.length > 0
+                ? dashState.alerts.length + " تنبيه(ات) نشطة تحتاج مراجعة."
+                : "لا توجد تنبيهات نشطة حالياً.";
+            if (offlineDevs.length > 0) pieces.push("جهاز غير متصل: " + offlineDevs.map(function (d) { return d.name; }).join("، ") + ".");
+            if (warnDevs.length > 0) pieces.push("استخدام مرتفع للمعالج على " + warnDevs.map(function (d) { return d.name + " (" + d.cpu + "%)"; }).join("، ") + ".");
+            if (pieces.length === 0 && s.total > 0) pieces.push("جميع الأجهزة الـ " + s.total + " ضمن المعدل الطبيعي، وصحة الشبكة " + s.health + "%.");
+            el.innerHTML = "<strong>" + lead + "</strong> " + pieces.join(" ");
+        },
+
+        renderAll: function () {
+            this.renderStats();
+            this.renderTopology();
+            this.renderAlerts();
+            this.renderDevicesTable();
+            this.renderAiSummary();
+            var modalEl = document.getElementById("allAlertsModal");
+            if (modalEl.classList.contains("show")) this.renderAlertsModal();
+        }
+    };
+
+    function initDashboardHandlers() {
+        document.getElementById("devices-tbody").addEventListener("click", function (e) {
+            var btn = e.target.closest(".power-toggle");
+            if (!btn || netMode !== "simulated") return;
+            var id = btn.getAttribute("data-id");
+            var action = btn.getAttribute("data-action");
+            btn.disabled = true;
+            btn.textContent = "...";
+            Api.power(id, action).then(function (res) {
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                return Dashboard.refresh();
+            }).catch(function (err) {
+                alert("تعذّر تنفيذ العملية: " + err.message);
+                Dashboard.refresh();
+            });
+        });
+
+        document.getElementById("allAlertsModal").addEventListener("show.bs.modal", function () { Dashboard.renderAlertsModal(); });
+
+        document.getElementById("reset-demo").addEventListener("click", function (e) {
+            e.preventDefault();
+            Dashboard.refresh();
+        });
+        var viewNetBtn = document.getElementById("view-network-btn");
+        if (viewNetBtn) viewNetBtn.addEventListener("click", function (e) {
+            e.preventDefault();
+            Dashboard.refresh();
+        });
+    }
+
+    /* =====================================================================
+       BOOT
+       ===================================================================== */
+    document.addEventListener("DOMContentLoaded", function () {
+        chatEl = document.getElementById("chat");
+        welcomeEl = document.getElementById("welcome");
+        inputBox = document.getElementById("inputBox");
+        sendBtn = document.getElementById("sendBtn");
+        examplesEl = document.getElementById("examples");
+
+        sendBtn.addEventListener("click", function () { Chat.send(); });
+        inputBox.addEventListener("keydown", function (e) { if (e.key === "Enter") Chat.send(); });
+
+        initTheme();
+        initNav();
+        initDashboardHandlers();
+        initNetMode();   // also triggers the first Dashboard.refresh()
+        applyLang();     // fills in all text, including dashboard/chat strings
+
+        showView("dashboard");
+        setInterval(function () { Dashboard.refresh(); }, POLL_INTERVAL_MS);
+    });
+})();
 </script>
+
 </body>
 </html>
