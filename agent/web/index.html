@@ -244,12 +244,29 @@ body[data-net-mode="real"] .sim-only { display: none; }
 .cpu-bar-track { background: var(--row-border); border-radius: 20px; height: 5px; width: 60px; overflow: hidden; display: inline-block; vertical-align: middle; margin-right: 6px; }
 .cpu-bar-fill { height: 100%; background: var(--accent); transition: width 0.4s; }
 
+/* ================= DEVICES GRID (Devices view) ================= */
+
+.devices-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin-top: 4px; }
+.device-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px; display: flex; gap: 12px; align-items: flex-start; }
+.device-icon { width: 38px; height: 38px; border-radius: 9px; background: var(--panel); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--accent); }
+.device-icon svg { width: 20px; height: 20px; }
+.device-info { min-width: 0; flex: 1; }
+.device-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.device-meta { font-size: 11.5px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.device-type-label { font-size: 10.5px; color: var(--accent); margin-top: 5px; font-weight: 500; }
+
 /* =========================================================================
    CHAT VIEW
    ========================================================================= */
 
-#chatView { display: flex; justify-content: center; }
-#chatApp { width: 100%; max-width: 760px; height: calc(100vh - 72px); display: flex; flex-direction: column; }
+/* .content has 28px padding on every side (needed for the dashboard cards),
+   but that padding was stacking on top of #chatApp's own
+   calc(100vh - 72px) height, pushing the input bar below the viewport.
+   Cancel that padding here so the chat view fills exactly the space under
+   the topbar, edge to edge — #welcome/#inputBar already have their own
+   internal padding, so nothing looks cramped. */
+#chatView { display: flex; justify-content: center; margin: -28px; height: calc(100vh - 72px); }
+#chatApp { width: 100%; max-width: 760px; height: 100%; display: flex; flex-direction: column; }
 
 #welcome { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px; text-align: center; }
 #welcome h1 { font-size: 26px; font-weight: 600; margin: 0 0 8px; letter-spacing: -0.01em; }
@@ -320,9 +337,9 @@ body[data-net-mode="real"] .sim-only { display: none; }
     <div class="section-title" data-i18n="navOverview">Overview</div>
 
     <nav>
-        <a href="#" class="nav-link" data-view="dashboard" id="navDashboard" data-i18n="navDashboard">Dashboard</a>
-        <a href="#" class="nav-link" data-view="chat" id="navChat" data-i18n="navChat">AI Chat</a>
-        <a href="#" class="nav-link disabled" data-i18n="navDevices">Devices</a>
+        <a href="#" class="nav-link nav-primary" data-view="dashboard" id="navDashboard" data-i18n="navDashboard">Dashboard</a>
+        <a href="#" class="nav-link nav-primary" data-view="chat" id="navChat" data-i18n="navChat">AI Chat</a>
+        <a href="#" class="nav-link nav-primary" data-view="devices" id="navDevices" data-i18n="navDevices">Devices</a>
         <a href="#" class="nav-link disabled" data-i18n="navAlerts">Alerts</a>
         <a href="#" class="nav-link disabled" data-i18n="navLogs">Logs</a>
     </nav>
@@ -489,21 +506,24 @@ body[data-net-mode="real"] .sim-only { display: none; }
                 </div>
             </div>
 
+        </section>
+
+        <!-- ============================================================
+             DEVICES VIEW — active devices with a best-effort type icon
+             (laptop/phone/router/...), guessed from hostname + MAC vendor.
+             ============================================================ -->
+        <section id="devicesView" style="display:none">
             <div class="card-custom p-4">
                 <div class="section-header">
                     <div>
-                        <h5 data-i18n="aiTitle">NetMind AI</h5>
-                        <p data-i18n="aiSub">Intelligent network assistant</p>
+                        <h5 data-i18n="activeDevicesTitle">Active Devices</h5>
+                        <p data-i18n="activeDevicesSub">Currently online — device type is a best-effort guess</p>
                     </div>
-                    <a class="btn-netmind" href="#" data-view="chat" data-i18n="openAssistant">Open Assistant</a>
+                    <span class="accent fw-semibold" id="active-devices-count">0</span>
                 </div>
-
-                <div class="ai-box">
-                    <div class="ai-icon">AI</div>
-                    <div class="ai-text" id="ai-summary">Analyzing network state…</div>
-                </div>
+                <div id="devices-grid" class="devices-grid"></div>
+                <div class="empty-note" id="devices-grid-note" data-i18n="deviceTypeNote">Device type is guessed from the hostname and MAC address vendor — it's a best-effort hint, not a certainty (phones with randomized MACs may be misclassified).</div>
             </div>
-
         </section>
 
         <!-- ============================================================
@@ -664,6 +684,13 @@ body[data-net-mode="real"] .sim-only { display: none; }
             navReports: "Reports", navRefresh: "Refresh Now",
             dashboardTitle: "Network Dashboard", dashboardSub: "Real-time network overview",
             chatTitle: "AI Assistant", chatSub: "Ask about any device on the network",
+            devicesPageTitle: "Active Devices", devicesPageSub: "Currently online devices",
+            activeDevicesTitle: "Active Devices", activeDevicesSub: "Currently online — device type is a best-effort guess",
+            deviceTypeNote: "Device type is guessed from the hostname and MAC address vendor — it's a best-effort hint, not a certainty (phones with randomized MACs may be misclassified).",
+            noActiveDevices: "No active devices right now.",
+            typePhone: "Phone", typeLaptop: "Laptop / PC", typeRouter: "Router", typeFirewall: "Firewall",
+            typeCamera: "Camera", typeSwitch: "Switch", typeServer: "Server", typeTv: "TV / Streaming",
+            typeIot: "IoT device", typeApple: "Apple device", typeUnknown: "Unknown device",
             netSimulated: "Simulated Lab", netReal: "Real Network",
             statDevices: "Devices", statHealth: "Network Health", statAlerts: "Active Alerts",
             statAlertsSub: "Requires attention", statTraffic: "Network Traffic", statTrafficSub: "Current traffic",
@@ -701,6 +728,13 @@ body[data-net-mode="real"] .sim-only { display: none; }
             navReports: "التقارير", navRefresh: "تحديث الآن",
             dashboardTitle: "لوحة الشبكة", dashboardSub: "نظرة لحظية على الشبكة",
             chatTitle: "مساعد NetMind", chatSub: "اسأل عن أي جهاز بالشبكة",
+            devicesPageTitle: "الأجهزة النشطة", devicesPageSub: "الأجهزة المتصلة حاليًا",
+            activeDevicesTitle: "الأجهزة النشطة", activeDevicesSub: "المتصلة حاليًا — نوع الجهاز تخمين تقريبي",
+            deviceTypeNote: "نوع الجهاز مُخمَّن من اسم الجهاز وشركة مصنّع MAC — تقدير تقريبي مو مؤكد (الجوالات اللي تستخدم MAC عشوائي ممكن يطلع تصنيفها غلط).",
+            noActiveDevices: "لا توجد أجهزة نشطة حاليًا.",
+            typePhone: "جوال", typeLaptop: "لابتوب / PC", typeRouter: "راوتر", typeFirewall: "فايروول",
+            typeCamera: "كاميرا", typeSwitch: "سويتش", typeServer: "سيرفر", typeTv: "تلفزيون / بث",
+            typeIot: "جهاز IoT", typeApple: "جهاز Apple", typeUnknown: "جهاز غير معروف",
             netSimulated: "شبكة محاكاة", netReal: "شبكة حقيقية",
             statDevices: "الأجهزة", statHealth: "صحة الشبكة", statAlerts: "تنبيهات نشطة",
             statAlertsSub: "تحتاج مراجعة", statTraffic: "حركة الشبكة", statTrafficSub: "الحركة الحالية",
@@ -781,23 +815,31 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
     function updatePageHeader() {
         var s = STRINGS[lang];
-        document.getElementById("pageTitle").textContent = currentView === "chat" ? s.chatTitle : s.dashboardTitle;
-        document.getElementById("pageSubtitle").textContent = currentView === "chat" ? s.chatSub : s.dashboardSub;
+        var titles = { chat: s.chatTitle, devices: s.devicesPageTitle, dashboard: s.dashboardTitle };
+        var subs = { chat: s.chatSub, devices: s.devicesPageSub, dashboard: s.dashboardSub };
+        document.getElementById("pageTitle").textContent = titles[currentView] || s.dashboardTitle;
+        document.getElementById("pageSubtitle").textContent = subs[currentView] || s.dashboardSub;
     }
 
     function showView(view) {
         currentView = view;
 
         document.getElementById("dashboardView").style.display = view === "dashboard" ? "" : "none";
+        document.getElementById("devicesView").style.display = view === "devices" ? "" : "none";
         document.getElementById("chatView").style.display = view === "chat" ? "" : "none";
 
-        document.querySelectorAll('.nav-link[data-view]').forEach(function (el) {
+        // Only the Overview section's links (.nav-primary) get the active
+        // highlight. "AI Assistant" under Intelligence points to the same
+        // chat view but is a secondary shortcut, not the primary nav item —
+        // highlighting both at once looked like two different pages were
+        // selected simultaneously.
+        document.querySelectorAll('.nav-link.nav-primary[data-view]').forEach(function (el) {
             el.classList.toggle("active", el.getAttribute("data-view") === view);
         });
 
         updatePageHeader();
 
-        if (view === "dashboard") {
+        if (view === "dashboard" || view === "devices") {
             Dashboard.refresh();
         } else {
             document.getElementById("inputBox").focus();
@@ -969,11 +1011,117 @@ body[data-net-mode="real"] .sim-only { display: none; }
         return "status-offline";
     }
 
+    /* =====================================================================
+       DEVICE TYPE GUESSING (Devices view) — best-effort only.
+
+       Simulated-lab devices already have an exact, known `type` from
+       registry.json (host/firewall/camera/router/switch/server), so no
+       guessing is needed there — this just maps that known type to an icon.
+
+       Real-network devices only ever give us IP + MAC + (sometimes) a
+       hostname, so the "laptop vs phone" question is answered with a
+       heuristic: hostname keywords first (strongest signal — mDNS often
+       broadcasts real names like "Khalids-iPhone"), then a small local
+       MAC-vendor (OUI) lookup table as a fallback. This is explicitly NOT
+       reliable for every device — most modern phones randomize their MAC
+       address by default (iOS 14+/Android 10+), which defeats vendor
+       lookup entirely, so a phone can easily show up as "Unknown device".
+       That limitation is shown directly in the UI (deviceTypeNote), not
+       hidden — same spirit as the existing Limitations section already
+       written for the real-network discovery module.
+       ===================================================================== */
+
+    var ICONS = {
+        phone:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></svg>',
+        laptop:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="12" rx="1"/><line x1="2" y1="20" x2="22" y2="20"/></svg>',
+        router:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="10" width="18" height="7" rx="1"/><line x1="7" y1="10" x2="7" y2="6"/><line x1="12" y1="10" x2="12" y2="4"/><line x1="17" y1="10" x2="17" y2="6"/><circle cx="7" cy="13.5" r="0.6" fill="currentColor"/></svg>',
+        firewall:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6l7-3z"/></svg>',
+        camera:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="7" width="13" height="10" rx="2"/><path d="M15 10l6-3v10l-6-3"/></svg>',
+        switch:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="18" height="10" rx="1"/><circle cx="7.5" cy="12" r="0.8" fill="currentColor"/><circle cx="12" cy="12" r="0.8" fill="currentColor"/><circle cx="16.5" cy="12" r="0.8" fill="currentColor"/></svg>',
+        server:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="6" rx="1"/><rect x="4" y="14" width="16" height="6" rx="1"/><circle cx="7.5" cy="7" r="0.6" fill="currentColor"/><circle cx="7.5" cy="17" r="0.6" fill="currentColor"/></svg>',
+        tv:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="12" rx="1"/><line x1="8" y1="20" x2="16" y2="20"/></svg>',
+        iot:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="8" y="8" width="8" height="8" rx="1"/><line x1="8" y1="3" x2="8" y2="8"/><line x1="16" y1="3" x2="16" y2="8"/><line x1="8" y1="16" x2="8" y2="21"/><line x1="16" y1="16" x2="16" y2="21"/><line x1="3" y1="8" x2="8" y2="8"/><line x1="16" y1="8" x2="21" y2="8"/><line x1="3" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="21" y2="16"/></svg>',
+        unknown: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M9.3 9a2.7 2.7 0 1 1 3.8 2.5c-.9.4-1.1 1-1.1 1.9"/><line x1="12" y1="16.5" x2="12" y2="16.6"/></svg>'
+    };
+
+    // Small curated OUI (MAC vendor prefix) table — common consumer/IT
+    // vendors only, not an exhaustive IEEE database. First 3 octets,
+    // colon-separated, uppercase.
+    var MAC_VENDORS = {
+        "3C:06:30": "Apple", "A4:5E:60": "Apple", "F0:18:98": "Apple", "88:66:A5": "Apple",
+        "8C:85:90": "Apple", "DC:A4:CA": "Apple", "AC:BC:32": "Apple", "D0:03:4B": "Apple",
+        "5C:0A:5B": "Samsung", "8C:77:12": "Samsung", "CC:07:AB": "Samsung", "00:16:6B": "Samsung",
+        "E8:50:8B": "Samsung", "A0:21:95": "Samsung",
+        "00:1E:10": "Huawei", "48:46:FB": "Huawei", "20:F3:A3": "Huawei", "00:E0:FC": "Huawei",
+        "28:6C:07": "Xiaomi", "64:09:80": "Xiaomi", "F8:A4:5F": "Xiaomi", "9C:99:A0": "Xiaomi",
+        "00:1B:21": "Intel", "3C:A9:F4": "Intel", "A4:BB:6D": "Intel", "7C:7A:91": "Intel",
+        "00:14:22": "Dell", "D4:BE:D9": "Dell", "B8:CA:3A": "Dell", "18:A9:9B": "Dell",
+        "3C:D9:2B": "HP", "00:1F:29": "HP", "2C:44:FD": "HP",
+        "00:21:CC": "Lenovo", "A8:8E:24": "Lenovo", "54:EE:75": "Lenovo",
+        "50:C7:BF": "TP-Link", "EC:08:6B": "TP-Link", "F4:F2:6D": "TP-Link",
+        "B8:27:EB": "Raspberry Pi", "DC:A6:32": "Raspberry Pi", "E4:5F:01": "Raspberry Pi",
+        "24:0A:C4": "Espressif (IoT)", "30:AE:A4": "Espressif (IoT)", "7C:9E:BD": "Espressif (IoT)",
+        "44:65:0D": "Amazon", "68:37:E9": "Amazon", "FC:65:DE": "Amazon",
+        "F4:F5:D8": "Google", "54:60:09": "Google", "94:EB:2C": "Google",
+        "00:0E:58": "Sonos", "1C:87:2C": "ASUSTek", "2C:FD:A1": "ASUSTek",
+        "FC:FB:FB": "Oppo", "6C:B7:49": "Vivo", "40:4E:36": "OnePlus"
+    };
+
+    function macVendor(mac) {
+        if (!mac) return null;
+        var prefix = mac.toUpperCase().slice(0, 8);
+        return MAC_VENDORS[prefix] || null;
+    }
+
+    function classifyDevice(d, mode) {
+        var s = STRINGS[lang];
+
+        if (mode !== "real") {
+            var simMap = {
+                router: { icon: ICONS.router, label: s.typeRouter },
+                firewall: { icon: ICONS.firewall, label: s.typeFirewall },
+                camera: { icon: ICONS.camera, label: s.typeCamera },
+                switch: { icon: ICONS.switch, label: s.typeSwitch },
+                server: { icon: ICONS.server, label: s.typeServer }
+            };
+            return simMap[d.type] || { icon: ICONS.laptop, label: TYPE_LABELS[d.type] || d.type || s.typeUnknown };
+        }
+
+        var name = (d.name || "").toLowerCase();
+        var vendor = macVendor(d.mac);
+
+        function has(words) { return words.some(function (w) { return name.indexOf(w) !== -1; }); }
+
+        if (has(["router", "gateway", "cpe", "homerouter", "modem", "access-point", "accesspoint"]))
+            return { icon: ICONS.router, label: s.typeRouter, vendor: vendor };
+        if (has(["iphone", "android", "galaxy", "redmi", "pixel", "oneplus", "honor", "mi-", "poco", "oppo", "vivo", "realme"]))
+            return { icon: ICONS.phone, label: s.typePhone, vendor: vendor };
+        if (has(["macbook", "imac", "mac-mini", "thinkpad", "laptop", "notebook", "chromebook", "surface", "desktop", "pc-"]))
+            return { icon: ICONS.laptop, label: s.typeLaptop, vendor: vendor };
+        if (has(["tv", "chromecast", "firetv", "roku", "appletv"]))
+            return { icon: ICONS.tv, label: s.typeTv, vendor: vendor };
+        if (has(["echo", "alexa", "nest", "ring", "sonos", "printer", "cam-", "esp", "smartplug"]))
+            return { icon: ICONS.iot, label: s.typeIot, vendor: vendor };
+
+        if (vendor) {
+            var mobileFirst = ["Xiaomi", "OnePlus", "Oppo", "Vivo", "Honor"];
+            var pcVendors = ["Dell", "HP", "Lenovo", "Intel", "ASUSTek"];
+            if (mobileFirst.indexOf(vendor) !== -1) return { icon: ICONS.phone, label: s.typePhone, vendor: vendor };
+            if (pcVendors.indexOf(vendor) !== -1) return { icon: ICONS.laptop, label: s.typeLaptop, vendor: vendor };
+            if (vendor === "Apple") return { icon: ICONS.unknown, label: s.typeApple, vendor: vendor };
+            if (vendor === "Raspberry Pi" || vendor === "Espressif (IoT)" || vendor === "Sonos" || vendor === "Amazon")
+                return { icon: ICONS.iot, label: s.typeIot, vendor: vendor };
+        }
+
+        return { icon: ICONS.unknown, label: vendor || s.typeUnknown, vendor: vendor };
+    }
+
     var Dashboard = {
         refresh: function () {
             // Don't hammer the backend (especially the slow real-network
-            // scan) while the user is on the Chat view.
-            if (currentView !== "dashboard") return;
+            // scan) while the user is on the Chat view — but the Devices
+            // view needs the same live device list as the Dashboard.
+            if (currentView !== "dashboard" && currentView !== "devices") return;
 
             var requestedMode = netMode;
             Promise.all([Api.devices(requestedMode), Api.alerts(requestedMode)]).then(function (results) {
@@ -1144,10 +1292,44 @@ body[data-net-mode="real"] .sim-only { display: none; }
             });
         },
 
+        renderDevicesGrid: function () {
+            var grid = document.getElementById("devices-grid");
+            if (!grid) return; // only present on the Devices view
+
+            var active = dashState.devices.filter(function (d) { return d.status !== "offline"; });
+            document.getElementById("active-devices-count").textContent = active.length;
+
+            var note = document.getElementById("devices-grid-note");
+            if (note) note.style.display = netMode === "real" ? "" : "none"; // the guess-accuracy caveat only applies to real devices
+
+            grid.innerHTML = "";
+            if (active.length === 0) {
+                grid.innerHTML = '<div class="empty-note">' + STRINGS[lang].noActiveDevices + "</div>";
+                return;
+            }
+
+            active.forEach(function (d) {
+                var info = classifyDevice(d, netMode);
+                var card = document.createElement("div");
+                card.className = "device-card";
+                var metaLine = netMode === "real" ? (d.mac || "--") : (d.ip || "");
+                var vendorLine = info.vendor ? " · " + info.vendor : "";
+                card.innerHTML =
+                    '<div class="device-icon">' + info.icon + "</div>" +
+                    '<div class="device-info">' +
+                        '<div class="device-name">' + (d.name || d.id || "--") + "</div>" +
+                        '<div class="device-meta">' + metaLine + "</div>" +
+                        '<div class="device-type-label">' + info.label + vendorLine + "</div>" +
+                    "</div>";
+                grid.appendChild(card);
+            });
+        },
+
         renderAiSummary: function () {
             if (!dashState.connected) return;
-            var s = this.computeStats();
             var el = document.getElementById("ai-summary");
+            if (!el) return; // the AI summary card was removed from the dashboard
+            var s = this.computeStats();
 
             if (netMode === "real") {
                 el.innerHTML = "<strong>" + s.total + " device(s) found on the real network.</strong> Read-only monitoring mode — no power control or firewall data available here.";
@@ -1171,6 +1353,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
             this.renderTopology();
             this.renderAlerts();
             this.renderDevicesTable();
+            this.renderDevicesGrid();
             this.renderAiSummary();
             var modalEl = document.getElementById("allAlertsModal");
             if (modalEl.classList.contains("show")) this.renderAlertsModal();
