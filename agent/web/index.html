@@ -160,6 +160,18 @@ html[dir="rtl"] body { font-family: 'IBM Plex Sans Arabic', 'IBM Plex Sans', san
 .theme-toggle-btn svg, .mode-toggle-btn svg { width: 15px; height: 15px; }
 .mode-toggle-btn.real-active { border-color: var(--accent); color: var(--accent); }
 
+/* segmented net-mode control: both labels visible, active one orange, other grey */
+.mode-toggle-btn.mode-segmented { padding: 3px; gap: 2px; background: var(--panel); }
+.mode-toggle-btn.mode-segmented.real-active { border-color: var(--border); }
+.mode-toggle-btn.mode-segmented .mode-opt {
+    padding: 4px 12px; border-radius: 16px; color: var(--muted);
+    white-space: nowrap; transition: background-color .15s, color .15s;
+}
+.mode-toggle-btn.mode-segmented:not(.real-active) #net-mode-sim,
+.mode-toggle-btn.mode-segmented.real-active #net-mode-real {
+    background: var(--accent); color: var(--accent-text, #fff);
+}
+
 #langToggle {
     display: flex; align-items: center; gap: 6px;
     background: none; border: 1px solid var(--border); border-radius: 20px;
@@ -367,9 +379,10 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
         <div class="d-flex align-items-center gap-3" id="headerControls">
 
-            <button class="mode-toggle-btn" id="net-mode-toggle" title="Switch between simulated lab and real network">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-                <span id="net-mode-label">Simulated Lab</span>
+            <button class="mode-toggle-btn mode-segmented" id="net-mode-toggle" title="Switch between simulated lab and real network">
+                <span class="mode-opt" id="net-mode-sim">Simulated Lab</span>
+                <span class="mode-opt" id="net-mode-real">Real Network</span>
+                <span id="net-mode-label" hidden></span>
             </button>
 
             <button class="theme-toggle-btn" id="theme-toggle" title="Toggle dark / light mode">
@@ -648,6 +661,9 @@ body[data-net-mode="real"] .sim-only { display: none; }
         document.body.setAttribute("data-net-mode", mode);
         document.getElementById("net-mode-label").textContent = mode === "real" ? I18N.t("netReal") : I18N.t("netSimulated");
         document.getElementById("net-mode-toggle").classList.toggle("real-active", mode === "real");
+        var simOpt = document.getElementById("net-mode-sim"), realOpt = document.getElementById("net-mode-real");
+        if (simOpt) simOpt.textContent = I18N.t("netSimulated");
+        if (realOpt) realOpt.textContent = I18N.t("netReal");
 
         var row = document.getElementById("devices-thead-row");
         if (row) {
@@ -667,9 +683,8 @@ body[data-net-mode="real"] .sim-only { display: none; }
         try { saved = window.localStorage.getItem("netmind-net-mode"); } catch (e) {}
         applyNetMode(saved === "real" ? "real" : "simulated");
 
-        document.getElementById("net-mode-toggle").addEventListener("click", function () {
-            applyNetMode(netMode === "simulated" ? "real" : "simulated");
-        });
+        document.getElementById("net-mode-sim").addEventListener("click", function () { if (netMode !== "simulated") applyNetMode("simulated"); });
+        document.getElementById("net-mode-real").addEventListener("click", function () { if (netMode !== "real") applyNetMode("real"); });
     }
 
     /* =====================================================================
