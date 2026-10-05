@@ -202,8 +202,15 @@ html[dir="rtl"] body { font-family: 'IBM Plex Sans Arabic', 'IBM Plex Sans', san
 
 .btn-netmind { background: var(--accent); border: none; color: white; border-radius: 8px; padding: 8px 14px; font-size: 13px; text-decoration: none; display: inline-block; }
 .btn-netmind:hover { background: #b95738; color: white; }
-.btn-light-netmind { background: transparent; border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 7px 12px; font-size: 12px; }
+.btn-light-netmind {
+    -webkit-appearance: none; appearance: none; /* stop the OS drawing its own
+        (light-colored) disabled-button face over our background */
+    background: transparent; border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 7px 12px; font-size: 12px;
+}
 .btn-light-netmind:hover { background: var(--panel); }
+.btn-light-netmind:disabled { background: transparent; color: var(--muted); opacity: 0.55; cursor: default; }
+.btn-light-netmind:disabled:hover { background: transparent; }
 
 /* ================= NETWORK TOPOLOGY ================= */
 
@@ -231,7 +238,26 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
 /* ================= TABLE ================= */
 
-.table { margin: 0; color: var(--text); }
+/* Bootstrap's own table CSS variables (--bs-table-bg, --bs-table-color) default
+   toward light-mode white and are applied directly to every <th>/<td> cell —
+   Bootstrap only updates them for its OWN data-bs-theme="dark" attribute,
+   which this project doesn't use (it has its own data-theme switch), so those
+   Bootstrap variables never see dark mode and keep painting cells white. The
+   !important is intentional: it's a targeted override of a specific
+   third-party reset, not general styling. */
+.table {
+    --bs-table-bg: transparent;
+    --bs-table-color: var(--text);
+    --bs-table-striped-bg: transparent;
+    --bs-table-hover-bg: transparent;
+    --bs-table-accent-bg: transparent;
+    margin: 0;
+    color: var(--text);
+}
+.table > :not(caption) > * > * {
+    background-color: transparent !important;
+    color: inherit;
+}
 .table th { color: var(--muted); font-size: 12px; font-weight: 500; border-bottom: 1px solid var(--border); }
 .table td { font-size: 13px; border-bottom: 1px solid var(--row-border); padding: 14px 8px; }
 .status { padding: 5px 9px; border-radius: 20px; font-size: 11px; }
@@ -353,7 +379,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
         <a href="#" class="nav-link nav-primary" data-view="chat" id="navChat" data-i18n="navChat">AI Chat</a>
         <a href="#" class="nav-link nav-primary" data-view="devices" id="navDevices" data-i18n="navDevices">Devices</a>
         <a href="#" class="nav-link disabled" data-i18n="navAlerts">Alerts</a>
-        <a href="#" class="nav-link disabled" data-i18n="navLogs">Logs</a>
+        <a href="#" class="nav-link nav-primary" data-view="logs" id="navLogs" data-i18n="navLogs">Logs</a>
     </nav>
 
     <div class="section-title" data-i18n="navIntelligence">Intelligence</div>
@@ -540,6 +566,35 @@ body[data-net-mode="real"] .sim-only { display: none; }
         </section>
 
         <!-- ============================================================
+             LOGS VIEW — device power/status history, pulled from the
+             backend's in-memory event log (/api/logs or /api/real-logs).
+             ============================================================ -->
+        <section id="logsView" style="display:none">
+            <div class="card-custom p-4">
+                <div class="section-header">
+                    <div>
+                        <h5 data-i18n="logsTitle">Device Log</h5>
+                        <p data-i18n="logsSub">Power and connectivity history for this session</p>
+                    </div>
+                    <span class="accent fw-semibold" id="logs-count-badge">0</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead>
+                            <tr>
+                                <th data-i18n="colTime">Time</th>
+                                <th data-i18n="colDevice">Device</th>
+                                <th data-i18n="colEvent">Event</th>
+                                <th data-i18n="colDetails">Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logs-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================
              CHAT VIEW
              ============================================================ -->
         <section id="chatView" style="display:none">
@@ -608,6 +663,10 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
         alerts: function (mode) {
             return fetchJson(Api.base + (mode === "real" ? "/api/real-alerts" : "/api/alerts"));
+        },
+
+        logs: function (mode) {
+            return fetchJson(Api.base + (mode === "real" ? "/api/real-logs" : "/api/logs"));
         },
 
         power: function (id, state) {
@@ -700,6 +759,12 @@ body[data-net-mode="real"] .sim-only { display: none; }
             dashboardTitle: "Network Dashboard", dashboardSub: "Real-time network overview",
             chatTitle: "AI Assistant", chatSub: "Ask about any device on the network",
             devicesPageTitle: "Active Devices", devicesPageSub: "Currently online devices",
+            logsPageTitle: "Device Log", logsPageSub: "Power and connectivity history",
+            logsTitle: "Device Log", logsSub: "Power and connectivity history for this session",
+            colTime: "Time", colEvent: "Event", colDetails: "Details",
+            noLogs: "No events logged yet — power a device on/off to see it here.",
+            evtPowerOn: "Powered On", evtPowerOff: "Powered Off", evtStatusChange: "Status Changed",
+            evtDeviceSeen: "Device Seen", evtDeviceLost: "Device Lost",
             activeDevicesTitle: "Active Devices", activeDevicesSub: "Currently online — device type is a best-effort guess",
             deviceTypeNote: "Device type is guessed from the hostname and MAC address vendor — it's a best-effort hint, not a certainty (phones with randomized MACs may be misclassified).",
             noActiveDevices: "No active devices right now.",
@@ -744,6 +809,12 @@ body[data-net-mode="real"] .sim-only { display: none; }
             dashboardTitle: "لوحة الشبكة", dashboardSub: "نظرة لحظية على الشبكة",
             chatTitle: "مساعد NetMind", chatSub: "اسأل عن أي جهاز بالشبكة",
             devicesPageTitle: "الأجهزة النشطة", devicesPageSub: "الأجهزة المتصلة حاليًا",
+            logsPageTitle: "سجل الأحداث", logsPageSub: "سجل التشغيل والاتصال",
+            logsTitle: "سجل الأحداث", logsSub: "سجل التشغيل والاتصال لهذه الجلسة",
+            colTime: "الوقت", colEvent: "الحدث", colDetails: "التفاصيل",
+            noLogs: "لا توجد أحداث مسجّلة بعد — شغّل أو أطفئ جهاز عشان تشوفه هنا.",
+            evtPowerOn: "تم التشغيل", evtPowerOff: "تم الإطفاء", evtStatusChange: "تغيّرت الحالة",
+            evtDeviceSeen: "ظهر جهاز", evtDeviceLost: "اختفى جهاز",
             activeDevicesTitle: "الأجهزة النشطة", activeDevicesSub: "المتصلة حاليًا — نوع الجهاز تخمين تقريبي",
             deviceTypeNote: "نوع الجهاز مُخمَّن من اسم الجهاز وشركة مصنّع MAC — تقدير تقريبي مو مؤكد (الجوالات اللي تستخدم MAC عشوائي ممكن يطلع تصنيفها غلط).",
             noActiveDevices: "لا توجد أجهزة نشطة حاليًا.",
@@ -830,8 +901,8 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
     function updatePageHeader() {
         var s = STRINGS[lang];
-        var titles = { chat: s.chatTitle, devices: s.devicesPageTitle, dashboard: s.dashboardTitle };
-        var subs = { chat: s.chatSub, devices: s.devicesPageSub, dashboard: s.dashboardSub };
+        var titles = { chat: s.chatTitle, devices: s.devicesPageTitle, dashboard: s.dashboardTitle, logs: s.logsPageTitle };
+        var subs = { chat: s.chatSub, devices: s.devicesPageSub, dashboard: s.dashboardSub, logs: s.logsPageSub };
         document.getElementById("pageTitle").textContent = titles[currentView] || s.dashboardTitle;
         document.getElementById("pageSubtitle").textContent = subs[currentView] || s.dashboardSub;
     }
@@ -841,6 +912,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
         document.getElementById("dashboardView").style.display = view === "dashboard" ? "" : "none";
         document.getElementById("devicesView").style.display = view === "devices" ? "" : "none";
+        document.getElementById("logsView").style.display = view === "logs" ? "" : "none";
         document.getElementById("chatView").style.display = view === "chat" ? "" : "none";
 
         // Only the Overview section's links (.nav-primary) get the active
@@ -854,7 +926,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
         updatePageHeader();
 
-        if (view === "dashboard" || view === "devices") {
+        if (view === "dashboard" || view === "devices" || view === "logs") {
             Dashboard.refresh();
         } else {
             document.getElementById("inputBox").focus();
@@ -1001,7 +1073,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
         switch: "Switch", server: "Server", "real-device": "Device"
     };
 
-    var dashState = { devices: [], alerts: [], connected: false, lastError: null };
+    var dashState = { devices: [], alerts: [], logs: [], connected: false, lastError: null, pending: {} };
 
     function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
 
@@ -1135,14 +1207,28 @@ body[data-net-mode="real"] .sim-only { display: none; }
         refresh: function () {
             // Don't hammer the backend (especially the slow real-network
             // scan) while the user is on the Chat view — but the Devices
-            // view needs the same live device list as the Dashboard.
-            if (currentView !== "dashboard" && currentView !== "devices") return;
+            // and Logs views need the same live device list as the Dashboard.
+            if (currentView !== "dashboard" && currentView !== "devices" && currentView !== "logs") return;
 
             var requestedMode = netMode;
-            Promise.all([Api.devices(requestedMode), Api.alerts(requestedMode)]).then(function (results) {
+            var calls = [Api.devices(requestedMode), Api.alerts(requestedMode)];
+            // Logs are only fetched while that view is actually open — no
+            // point polling the event history every 5s in the background.
+            if (currentView === "logs") calls.push(Api.logs(requestedMode));
+
+            Promise.all(calls).then(function (results) {
                 if (requestedMode !== netMode) return; // stale — mode changed while this was in flight
                 dashState.devices = results[0] || [];
+                // أجهزة فيها عملية تشغيل/إطفاء قيد التنفيذ تحتفظ بحالتها المتفائلة
+                // هنا بدل ما أي استعلام دوري (كل 5 ثواني) يرجّعها لحالتها القديمة
+                // لأن Docker لسا ما خلص فعلياً — هذا اللي يصلح مشكلة "يرجع يطلع
+                // شغال بعد ما طفيته".
+                Object.keys(dashState.pending).forEach(function (id) {
+                    var d = dashState.devices.find(function (x) { return x.id === id; });
+                    if (d) d.status = dashState.pending[id];
+                });
                 dashState.alerts = (results[1] || []).sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+                if (results[2]) dashState.logs = results[2];
                 dashState.connected = true;
                 dashState.lastError = null;
                 Dashboard.renderAll();
@@ -1291,9 +1377,10 @@ body[data-net-mode="real"] .sim-only { display: none; }
                         ? "--"
                         : '<span class="cpu-bar-track"><span class="cpu-bar-fill" style="width:' + d.cpu + '%"></span></span>' + d.cpu + "%";
                     var canPower = d.type !== "router";
+                    var isPending = !!dashState.pending[d.id];
                     var powerBtn = canPower
-                        ? '<button class="btn-light-netmind power-toggle" data-id="' + d.id + '" data-action="' + (d.status === "offline" ? "on" : "off") + '">' +
-                          (d.status === "offline" ? "Power On" : "Power Off") + "</button>"
+                        ? '<button class="btn-light-netmind power-toggle" data-id="' + d.id + '" data-action="' + (d.status === "offline" ? "on" : "off") + '"' + (isPending ? " disabled" : "") + ">" +
+                          (isPending ? "…" : (d.status === "offline" ? "Power On" : "Power Off")) + "</button>"
                         : "";
                     tr.innerHTML =
                         '<td class="fw-semibold">' + d.name + "</td>" +
@@ -1340,6 +1427,87 @@ body[data-net-mode="real"] .sim-only { display: none; }
             });
         },
 
+        // تتأكد فعلياً من حالة الجهاز بعد أمر التشغيل/الإطفاء بدل ما تثق بلقطة
+        // وحدة — Docker أحياناً ياخذ لحظة (خصوصاً الإطفاء) قبل ما يتأكد التغيير،
+        // فنسوي استعلام متكرر قصير لين تتأكد الحالة الحقيقية أو تنتهي المحاولات.
+        verifyPower: function (id, expectedStatus) {
+            var attempts = 0;
+            var maxAttempts = 8;   // تقريباً 8 × 700ms ≈ 5.6 ثانية كحد أقصى
+            var intervalMs = 700;
+
+            // finish() دايماً تمسح pending وتعيد الرسم، حتى لو صار استثناء غير
+            // متوقع بالرسم نفسه — هذا يضمن الزر ما يعلّق "pending" للأبد مهما صار.
+            function finish(devices) {
+                delete dashState.pending[id];
+                if (devices) dashState.devices = devices;
+                try {
+                    Dashboard.renderAll();
+                } catch (renderErr) {
+                    console.error("NetMind: renderAll failed in verifyPower", renderErr);
+                }
+            }
+
+            function poll() {
+                attempts++;
+                Api.devices("simulated").then(function (devices) {
+                    var d = (devices || []).find(function (x) { return x.id === id; });
+                    var matched = d && d.status === expectedStatus;
+
+                    if (matched || attempts >= maxAttempts) {
+                        finish(devices);
+                        if (!matched) {
+                            console.warn("NetMind: power action for " + id + " did not confirm within " + (maxAttempts * intervalMs / 1000) + "s — check device_control.py / Docker");
+                        }
+                    } else {
+                        setTimeout(poll, intervalMs);
+                    }
+                }).catch(function (err) {
+                    console.error("NetMind: verifyPower poll request failed", err);
+                    if (attempts >= maxAttempts) {
+                        finish(null);
+                    } else {
+                        setTimeout(poll, intervalMs);
+                    }
+                });
+            }
+            poll();
+        },
+
+        renderLogs: function () {
+            var tbody = document.getElementById("logs-tbody");
+            if (!tbody) return; // only present on the Logs view
+
+            var logs = dashState.logs || [];
+            var badge = document.getElementById("logs-count-badge");
+            if (badge) badge.textContent = logs.length;
+
+            tbody.innerHTML = "";
+            if (logs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="empty-note">' + STRINGS[lang].noLogs + "</td></tr>";
+                return;
+            }
+
+            var EVENT_META = {
+                power_on: { label: STRINGS[lang].evtPowerOn, cls: "status-online" },
+                power_off: { label: STRINGS[lang].evtPowerOff, cls: "status-offline" },
+                status_change: { label: STRINGS[lang].evtStatusChange, cls: "status-warning" },
+                device_seen: { label: STRINGS[lang].evtDeviceSeen, cls: "status-online" },
+                device_lost: { label: STRINGS[lang].evtDeviceLost, cls: "status-offline" }
+            };
+
+            logs.forEach(function (entry) {
+                var meta = EVENT_META[entry.type] || { label: entry.type, cls: "status-warning" };
+                var tr = document.createElement("tr");
+                var timeStr = new Date(entry.ts).toLocaleString(lang === "ar" ? "ar-SA" : "en-US");
+                tr.innerHTML =
+                    "<td>" + timeStr + "</td>" +
+                    '<td class="fw-semibold">' + (entry.device_name || entry.device_id || "--") + "</td>" +
+                    '<td><span class="status ' + meta.cls + '">' + meta.label + "</span></td>" +
+                    "<td>" + (entry.detail || "") + "</td>";
+                tbody.appendChild(tr);
+            });
+        },
+
         renderAiSummary: function () {
             if (!dashState.connected) return;
             var el = document.getElementById("ai-summary");
@@ -1369,6 +1537,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
             this.renderAlerts();
             this.renderDevicesTable();
             this.renderDevicesGrid();
+            this.renderLogs();
             this.renderAiSummary();
             var modalEl = document.getElementById("allAlertsModal");
             if (modalEl.classList.contains("show")) this.renderAlertsModal();
@@ -1378,17 +1547,48 @@ body[data-net-mode="real"] .sim-only { display: none; }
     function initDashboardHandlers() {
         document.getElementById("devices-tbody").addEventListener("click", function (e) {
             var btn = e.target.closest(".power-toggle");
-            if (!btn || netMode !== "simulated") return;
+            if (!btn || netMode !== "simulated" || btn.disabled) return;
+
             var id = btn.getAttribute("data-id");
-            var action = btn.getAttribute("data-action");
-            btn.disabled = true;
-            btn.textContent = "...";
+            var action = btn.getAttribute("data-action"); // "on" | "off"
+            var expectedStatus = action === "on" ? "online" : "offline";
+            var device = dashState.devices.find(function (d) { return d.id === id; });
+            var previousStatus = device ? device.status : null;
+
+            // تحديث فوري بالواجهة قبل ما ننتظر Docker يخلص — هذا اللي يصلح
+            // الإحساس بالبطء، لأن المستخدم يشوف النتيجة فوراً بدل ما ينتظر
+            // رحلة POST + GET كاملة.
+            if (device) {
+                device.status = expectedStatus;
+                if (expectedStatus === "offline") device.cpu = 0;
+            }
+            dashState.pending[id] = expectedStatus;
+
+            // الرسم محاط بـ try/catch عمداً — لو صار أي استثناء هنا ما يوقف
+            // تنفيذ أمر التشغيل/الإطفاء الفعلي (اللي بالأسفل)، فيضل الزر معلّق
+            // للأبد بدون ما يوصل حتى يرسل الطلب الحقيقي للباك اند.
+            try {
+                Dashboard.renderStats();
+                Dashboard.renderDevicesTable();
+                Dashboard.renderDevicesGrid();
+            } catch (renderErr) {
+                console.error("NetMind: render error after optimistic power update", renderErr);
+            }
+
             Api.power(id, action).then(function (res) {
                 if (!res.ok) throw new Error("HTTP " + res.status);
-                return Dashboard.refresh();
+                return Dashboard.verifyPower(id, expectedStatus);
             }).catch(function (err) {
+                console.error("NetMind: power action failed", err);
+                // فشل الطلب نفسه — رجّع الحالة القديمة
+                delete dashState.pending[id];
+                if (device) device.status = previousStatus;
+                try {
+                    Dashboard.renderAll();
+                } catch (renderErr2) {
+                    console.error("NetMind: renderAll failed after power error", renderErr2);
+                }
                 alert("تعذّر تنفيذ العملية: " + err.message);
-                Dashboard.refresh();
             });
         });
 

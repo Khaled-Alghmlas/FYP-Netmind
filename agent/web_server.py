@@ -8,6 +8,7 @@ Supports two modes:
 """
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -375,6 +376,82 @@ MODES = {
 # In-memory chat history per (session_id, mode) pair
 SESSIONS = {}
 
+# ============================================================================
+# ADDED — Logs page support.
+#
+# There's no persistent event store in this project (everything is
+# in-memory, same as SESSIONS above — see Chapter 6 Limitations), so this
+# keeps a simple in-memory, most-recent-first list of device status
+# transitions for each mode, capped at MAX_LOG_ENTRIES. It is populated by
+# diffing each device list against the previously seen one every time
+# /api/devices or /api/real-devices is polled (the dashboard already polls
+# every 5s), so it captures a status change regardless of what caused it —
+# a dashboard power button, a chat command ("turn off host-ahmed"), or
+# (on the real network) a device simply joining/leaving — not just explicit
+# button clicks.
+# ============================================================================
+EVENT_LOG = []       # simulated-mode: power on/off + status changes
+REAL_EVENT_LOG = []  # real-network: devices appearing/disappearing
+MAX_LOG_ENTRIES = 300
+
+_last_sim_status = {}   # device_id -> last seen status (simulated mode)
+_last_real_status = {}  # device_id -> last seen status (real mode)
+
+
+def _log_event(log, event_type, device_id, device_name, detail):
+    log.insert(0, {
+        "ts": datetime.now(timezone.utc).timestamp() * 1000,  # ms, matches the frontend's Date.now()-style timestamps
+        "type": event_type,  # "power_on" | "power_off" | "status_change" | "device_seen" | "device_lost"
+        "device_id": device_id,
+        "device_name": device_name,
+        "detail": detail,
+    })
+    del log[MAX_LOG_ENTRIES:]
+
+
+def _track_sim_status(devices):
+    """Diffs the simulated-lab device list against what we last saw and logs
+    any status transition. Called on every /api/devices request."""
+    for d in devices:
+        did = d.get("id")
+        name = d.get("name", did)
+        new_status = d.get("status")
+        old_status = _last_sim_status.get(did)
+        if old_status is not None and old_status != new_status:
+            if new_status == "online":
+                event_type = "power_on"
+            elif new_status == "offline":
+                event_type = "power_off"
+            else:
+                event_type = "status_change"
+            _log_event(EVENT_LOG, event_type, did, name, f"{name}: {old_status} → {new_status}")
+        _last_sim_status[did] = new_status
+    return devices
+
+
+def _track_real_status(devices):
+    """Same idea for the real network: logs a device appearing for the first
+    time in a scan, or dropping out of a scan it was previously seen in.
+    Called on every /api/real-devices request."""
+    seen_ids = set()
+    for d in devices:
+        did = d.get("id")
+        if not did:
+            continue
+        seen_ids.add(did)
+        name = d.get("name", did)
+        if did not in _last_real_status:
+            _log_event(REAL_EVENT_LOG, "device_seen", did, name, f"{name} ({d.get('ip', '?')}) appeared on the network")
+        elif _last_real_status[did] == "lost":
+            _log_event(REAL_EVENT_LOG, "device_seen", did, name, f"{name} ({d.get('ip', '?')}) reappeared on the network")
+        _last_real_status[did] = d.get("status", "online")
+
+    for did, status in list(_last_real_status.items()):
+        if did not in seen_ids and status != "lost":
+            _log_event(REAL_EVENT_LOG, "device_lost", did, did, f"{did} no longer responding")
+            _last_real_status[did] = "lost"
+    return devices
+
 def run_query(user_input, history, tools, dispatch, steps=None):
     # `steps` is OPTIONAL and additive: when the caller passes a list, every
     # executed tool call (the "evidence chain") is recorded into it as
@@ -456,13 +533,21 @@ class PowerRequest(BaseModel):
 @app.get("/api/devices")
 def api_devices():
     """Live device list for the Dashboard (simulated lab), from registry.json + Docker."""
-    return dc.list_devices_dashboard()
+    devices = dc.list_devices_dashboard()
+    _track_sim_status(devices)  # ADDED — feeds the Logs page
+    return devices
 
 
 @app.get("/api/alerts")
 def api_alerts():
     """Live alerts for the Dashboard (simulated lab)."""
     return dc.get_alerts()
+
+
+@app.get("/api/logs")
+def api_logs():
+    """ADDED — Device power/status history for the Logs page (simulated lab)."""
+    return EVENT_LOG
 
 
 @app.post("/api/devices/{device_id}/power")
@@ -482,7 +567,7 @@ def api_real_devices():
     """Live devices on the real physical LAN (ARP/mDNS scan), shaped like /api/devices."""
     raw = ns.list_devices()
     items = raw.get("devices", []) if isinstance(raw, dict) else raw
-    return [
+    shaped = [
         {
             "id": d.get("ip"),
             "name": d.get("hostname") or d.get("ip"),
@@ -495,12 +580,20 @@ def api_real_devices():
         }
         for d in items
     ]
+    _track_real_status(shaped)  # ADDED — feeds the Logs page
+    return shaped
 
 
 @app.get("/api/real-alerts")
 def api_real_alerts():
     """Real-network mode is read-only monitoring, so no alerts yet."""
     return []
+
+
+@app.get("/api/real-logs")
+def api_real_logs():
+    """ADDED — Device appear/disappear history for the Logs page (real network)."""
+    return REAL_EVENT_LOG
 
 
 app.mount("/", StaticFiles(directory=Path(__file__).parent / "web", html=True), name="web")
