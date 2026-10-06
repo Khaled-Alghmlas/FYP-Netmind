@@ -16,3 +16,6 @@ network_inventory.json
 # OS
 .DS_Store
 topology/registry.json
+
+# Runtime audit log
+logs/

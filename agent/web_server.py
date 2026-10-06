@@ -6,7 +6,6 @@ Supports two modes:
             (discovery + online/offline only — no power control, since we're
             just a guest on a real network, not its administrator)
 """
-import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from groq import Groq
 
+import agent_core as core
 import device_control as dc
 import network_scanner as ns
 
@@ -280,7 +280,14 @@ SIMULATED_PROMPT = (
     "device status, IPs, firewalls, and cameras, and to power devices on/off. "
     "Be concise. Tool results for power_on/power_off include an already_in_that_state "
     "field — if true, tell the user the device was already in that state and nothing "
-    "changed, rather than implying an action just happened."
+    "changed, rather than implying an action just happened. "
+    "Destructive tools (power_off, block_port, allow_port, change_camera_credentials) "
+    "are NOT executed when you call them: they return status 'pending_confirmation'. "
+    "To block/allow a port, power a device off, or change a camera password you MUST call "
+    "the tool; never say an action is pending, queued, done or impossible unless you called "
+    "the tool in this turn and its result says so. After the tool returns "
+    "'pending_confirmation', tell the user what is waiting for their confirmation and that they "
+    "must press Confirm in the chat; never claim the action was done until the user has confirmed."
 )
 
 # ---------------------------------------------------------------------------
@@ -373,8 +380,16 @@ MODES = {
     },
 }
 
-# In-memory chat history per (session_id, mode) pair
-SESSIONS = {}
+# In-memory chat history per (session_id, mode) pair, with TTL + trimming
+SESSIONS = core.SessionStore()
+
+# Audit log of every tool call (in memory + logs/audit.jsonl) and the safety
+# guard that requires confirmation for destructive tools.
+AUDIT_LOG = core.AuditLog(path=Path(__file__).resolve().parent.parent / "logs" / "audit.jsonl")
+GUARDS = {
+    "simulated": core.Guard(SIMULATED_DISPATCH, dc.find_devices, AUDIT_LOG),
+    "real": core.Guard(REAL_DISPATCH, lambda name: [], AUDIT_LOG),
+}
 
 # ============================================================================
 # ADDED — Logs page support.
@@ -452,46 +467,13 @@ def _track_real_status(devices):
             _last_real_status[did] = "lost"
     return devices
 
-def run_query(user_input, history, tools, dispatch, steps=None):
-    # `steps` is OPTIONAL and additive: when the caller passes a list, every
-    # executed tool call (the "evidence chain") is recorded into it as
-    # {"tool": ..., "args": ..., "result": ...}. Nothing about the existing
-    # control flow or return value changes — a caller that doesn't pass
-    # `steps` sees identical behavior to before.
-    history.append({"role": "user", "content": user_input})
-
-    for _ in range(5):
-        try:
-            response = client.chat.completions.create(
-                model=MODEL,
-                messages=history,
-                tools=tools,
-                tool_choice="auto",
-            )
-        except Exception as e:
-            return f"Sorry, I hit an error talking to the model: {e}"
-        msg = response.choices[0].message
-        history.append(msg)
-
-        if not msg.tool_calls:
-            return msg.content
-
-        for call in msg.tool_calls:
-            fn_name = call.function.name
-            args = json.loads(call.function.arguments) if call.function.arguments else {}
-            try:
-                result = dispatch[fn_name](**args)
-            except Exception as e:
-                result = {"error": str(e)}
-            history.append({
-                "role": "tool",
-                "tool_call_id": call.id,
-                "content": json.dumps(result),
-            })
-            if steps is not None:
-                steps.append({"tool": fn_name, "args": args, "result": result})
-
-    return "Sorry, I couldn't complete that after several tool calls."
+def run_query(user_input, history, tools, guard, actor, session_key, steps=None):
+    """Thin wrapper binding the Groq client + guard to agent_core.run_query."""
+    return core.run_query(
+        client, MODEL, user_input, history, tools,
+        call_tool=lambda name, args: guard.call(name, args, actor, session_key),
+        steps=steps,
+    )
 
 app = FastAPI()
 app.add_middleware(
@@ -512,13 +494,49 @@ def chat(req: ChatRequest):
     config = MODES[mode]
 
     key = f"{req.session_id}:{mode}"
-    history = SESSIONS.setdefault(key, [{"role": "system", "content": config["system_prompt"]}])
+    history = SESSIONS.get(key, config["system_prompt"])
 
     # ADDED — collects the evidence chain (every tool call + its result) for
     # this turn, so the UI can show the diagnostic steps behind the reply.
     steps = []
-    reply = run_query(user_input=req.message, history=history, tools=config["tools"], dispatch=config["dispatch"], steps=steps)
-    return {"reply": reply, "mode": mode, "steps": steps}
+    reply = run_query(req.message, history, config["tools"], GUARDS[mode],
+                      actor=f"chat:{req.session_id}", session_key=key, steps=steps)
+    SESSIONS.save(key, history)
+    pending = [s["result"] for s in steps
+               if isinstance(s["result"], dict) and s["result"].get("status") == "pending_confirmation"]
+    return {"reply": reply, "mode": mode, "steps": steps, "pending": pending}
+
+
+class ConfirmRequest(BaseModel):
+    pending_id: str
+    approve: bool = True
+    acknowledge_protected: bool = False
+
+
+@app.post("/api/confirm")
+def api_confirm(req: ConfirmRequest):
+    """User-side confirmation of a destructive action. Only this endpoint (never
+    the model) can execute a pending action."""
+    out = GUARDS["simulated"].confirm(req.pending_id, req.approve, actor="user",
+                                      acknowledge_protected=req.acknowledge_protected)
+    # Tell the model what happened, otherwise it keeps saying "still pending".
+    key = out.pop("session_key", None)
+    if key and out.get("status") in ("executed", "cancelled", "error"):
+        SESSIONS.append(key, {"role": "user", "content": (
+            f"[System note: the user pressed {'Cancel' if out['status'] == 'cancelled' else 'Confirm'} in the UI. "
+            f"Outcome: {out['status']} - {out['summary']}. This action is no longer pending.]")})
+    return out
+
+
+@app.get("/api/pending")
+def api_pending():
+    return GUARDS["simulated"].list_pending()
+
+
+@app.get("/api/audit")
+def api_audit():
+    """Audit log of every tool call: who, what, arguments, result, when."""
+    return AUDIT_LOG.list()
 
 # ============================================================================
 # ADDED — REST endpoints for the live web Dashboard (agent/web/Dashboard.html).
@@ -552,14 +570,14 @@ def api_logs():
 
 @app.post("/api/devices/{device_id}/power")
 def api_power(device_id: str, req: PowerRequest):
-    """Powers a simulated-lab device on/off — same functions the chat uses."""
+    """Powers a simulated-lab device on/off. Power-on runs immediately; power-off
+    only creates a pending action that must be confirmed via /api/confirm."""
+    guard = GUARDS["simulated"]
     if req.state == "on":
-        result = dc.power_on(device_id)
-    elif req.state == "off":
-        result = dc.power_off(device_id)
-    else:
-        return {"error": "state must be 'on' or 'off'"}
-    return {"result": result}
+        return {"result": guard.call("power_on", {"name_or_owner": device_id}, actor="dashboard")}
+    if req.state == "off":
+        return guard.call("power_off", {"name_or_owner": device_id}, actor="dashboard")
+    return {"error": "state must be 'on' or 'off'"}
 
 
 @app.get("/api/real-devices")

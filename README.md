@@ -39,26 +39,49 @@ flowchart TD
 ```text
 .
 ├── agent/
+│   ├── agent_core.py           # Tool-calling loop, sessions, confirmation guard, audit log
 │   ├── device_control.py       # Control and inspect simulated lab devices
 │   ├── netmind_agent.py        # Terminal REPL agent
 │   ├── network_scanner.py     # Discover and check devices on the real LAN
 │   ├── web_server.py           # FastAPI backend and chat-mode dispatch
 │   └── web/
-│       ├── index.html          # Connected chat UI
-│       └── Dashboard.html      # Static dashboard mock-up (not live data)
+│       └── index.html          # Chat UI + live dashboard and logs
 ├── collectors/                 # Reserved for future diagnostics
 ├── docker/
 │   ├── camera/                 # Camera image and service scripts
 │   └── firewall/               # Firewall image and entrypoint
 ├── docs/                       # Project report
+├── tests/                      # Unit tests (+ integration/ for the live lab)
 ├── topology/
 │   ├── branches.py             # Shared network layout configuration
 │   ├── generate_topology.py    # Generates netmind-large.clab.yml
 │   ├── build_registry.py       # Builds machine-specific registry.json
 │   ├── netmind-lab.clab.yml    # Small starter topology
 │   └── netmind-large.clab.yml  # Generated larger topology
+├── Makefile                    # make up / down / test / lint / run
+├── CONTRIBUTING.md
 └── requirements.txt
 ```
+
+## Safety
+
+Destructive actions (`power_off`, `block_port`, `allow_port`,
+`change_camera_credentials`) are never executed straight from the model. They
+create a *pending action* that the user must confirm with the Confirm button in
+the chat (or the dashboard prompt for power-off). Protected devices (`r1` and
+all firewalls) need an extra acknowledgement. Every tool call is written to an
+audit log (`GET /api/audit`, and `logs/audit.jsonl`). Firewall rules are applied
+to both the INPUT and FORWARD chains, so a blocked port is also blocked for
+traffic passing through the firewall to other branches.
+
+## Development
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+make lint && make test
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the PR and review workflow.
 
 ## Features
 
@@ -104,30 +127,20 @@ flowchart TD
    docker build -t netmind-camera:latest docker/camera/
    ```
 
-### Bridge segments — manual prerequisite
-
-Containerlab `kind: bridge` nodes (used for switch/hub segments) attach to
-Linux bridge interfaces that must already exist on the host. The topology
-generator prints the bridge creation commands for the current layout. Create
-those bridges before deploying; they typically do not persist across a host
-reboot.
-
-### Deploy the simulated lab
+### Deploy the simulated lab (one command)
 
 From the repository root:
 
 ```bash
-cd topology
-python3 generate_topology.py
-# Create the bridges and apply the host-level FORWARD rules printed above.
-sudo containerlab deploy -t netmind-large.clab.yml
-python3 build_registry.py
+make up     # build images, create bridges (idempotent), deploy lab, build registry.json
+make down   # destroy the lab
 ```
 
-`generate_topology.py` regenerates the large topology and prints the required
-bridge and host forwarding commands. Run those commands before deploying.
-`build_registry.py` uses `containerlab inspect` to write `topology/registry.json`
-with the runtime container addresses used by the simulated-mode tools.
+`make up` is safe to re-run, including after a host reboot: it recreates the
+Linux bridges and host FORWARD rules only if they are missing, then deploys
+with `containerlab deploy --reconfigure` and runs `build_registry.py`.
+Individual steps are available as `make lab-build`, `make lab-bridges` and
+`make lab-up`. `topology/registry.json` is machine-specific and gitignored.
 
 ## Run NetMind
 
@@ -135,8 +148,7 @@ With the virtual environment activated, the lab deployed, and `.env` set, from
 the repository root:
 
 ```bash
-cd agent
-uvicorn web_server:app --reload
+make run    # same as: cd agent && uvicorn web_server:app --reload
 ```
 
 Open <http://127.0.0.1:8000/> for the connected chat UI. Choose **Simulated**
