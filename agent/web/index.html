@@ -102,10 +102,16 @@ html[dir="rtl"] body { font-family: 'IBM Plex Sans Arabic', 'IBM Plex Sans', san
     border-right: 1px solid var(--border);
     padding: 24px 16px;
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;
 }
 
 .logo { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; padding: 0 10px; }
-.logo span { color: var(--accent); }
+.logo .logo-net { display: inline-block; }
+.logo .logo-mind { color: var(--accent); }
+
+/* Alerts / Reports / Refresh Now are pinned to the bottom of the sidebar */
+.sidebar-bottom { margin-top: auto; padding-top: 16px; }
 
 .section-title {
     font-size: 11px; color: var(--muted); text-transform: uppercase;
@@ -355,7 +361,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
 @media (max-width: 900px) {
     .sidebar { width: 70px; padding: 20px 8px; }
     .logo { font-size: 0; text-align: center; }
-    .logo span { font-size: 18px; }
+    .logo .logo-net::first-letter { font-size: 18px; }
     .nav-link { text-align: center; font-size: 0; }
     .main { margin-left: 70px; }
     .section-title { display: none; }
@@ -370,7 +376,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
 <aside class="sidebar">
 
-    <div class="logo">NetMind <span>AI</span></div>
+    <div class="logo"><span class="logo-net">Net</span><span class="logo-mind">mind</span></div>
 
     <div class="section-title" data-i18n="navOverview">Overview</div>
 
@@ -378,13 +384,11 @@ body[data-net-mode="real"] .sim-only { display: none; }
         <a href="#" class="nav-link nav-primary" data-view="dashboard" id="navDashboard" data-i18n="navDashboard">Dashboard</a>
         <a href="#" class="nav-link nav-primary" data-view="chat" id="navChat" data-i18n="navChat">AI Chat</a>
         <a href="#" class="nav-link nav-primary" data-view="devices" id="navDevices" data-i18n="navDevices">Devices</a>
-        <a href="#" class="nav-link disabled" data-i18n="navAlerts">Alerts</a>
         <a href="#" class="nav-link nav-primary" data-view="logs" id="navLogs" data-i18n="navLogs">Logs</a>
     </nav>
 
-    <div class="section-title" data-i18n="navIntelligence">Intelligence</div>
-
-    <nav>
+    <nav class="sidebar-bottom">
+        <a href="#" class="nav-link disabled" data-i18n="navAlerts">Alerts</a>
         <a href="#" class="nav-link disabled" data-i18n="navReports">Reports</a>
         <a href="#" class="nav-link" id="reset-demo" data-i18n="navRefresh">Refresh Now</a>
     </nav>
