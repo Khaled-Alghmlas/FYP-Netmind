@@ -7,7 +7,7 @@ charset-normalizer==3.5.1
 cryptography==50.0.1
 distro==1.9.0
 docker==7.2.0
-fastapi==0.115.0
+fastapi>=0.115
 groq==1.7.0
 h11==0.16.0
 httpcore==1.0.9
@@ -39,5 +39,5 @@ textfsm==2.1.0
 typing-inspection==0.4.4
 typing_extensions==4.16.0
 urllib3==2.7.0
-uvicorn==0.30.6
+uvicorn>=0.30
 zeroconf==0.150.2
