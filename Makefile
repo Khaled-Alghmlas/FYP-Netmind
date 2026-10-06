@@ -5,7 +5,8 @@
 SHELL := /bin/bash
 TOPO_DIR := topology
 TOPO := netmind-large.clab.yml
-PYTHON ?= python3
+# Use the project venv automatically when it exists, so "make up" works even if it is not activated.
+PYTHON ?= $(if $(wildcard $(CURDIR)/.venv/bin/python),$(CURDIR)/.venv/bin/python,python3)
 
 .PHONY: help up down lab-build lab-bridges lab-up run test lint
 
