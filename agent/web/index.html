@@ -107,6 +107,8 @@ html[dir="rtl"] body { font-family: 'IBM Plex Sans Arabic', 'IBM Plex Sans', san
 }
 
 .logo { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; padding: 0 10px; }
+.logo { direction: ltr; unicode-bidi: isolate; }  /* brand name stays "Netmind" in Arabic */
+html[dir="rtl"] .logo { text-align: right; }
 .logo .logo-net { display: inline-block; }
 .logo .logo-mind { color: var(--accent); }
 
