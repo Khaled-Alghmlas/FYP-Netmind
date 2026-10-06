@@ -30,17 +30,25 @@ def lab():
             pytest.skip(f"{needed} not in registry.json - is the lab up?")
     server = dc._client.containers.get(reg[SERVER]["container"])
     client = dc._client.containers.get(reg[CLIENT]["container"])
-    server.exec_run(["sh", "-c", f"nc -l -p {PORT} >/dev/null 2>&1 &"])
+    # busybox nc accepts ONE connection and exits, so keep re-listening in a loop;
+    # otherwise the baseline probe would use up the listener and the "blocked"
+    # assertion would pass for the wrong reason.
+    server.exec_run(["sh", "-c", f"while true; do nc -l -p {PORT} >/dev/null 2>&1; done"], detach=True)
     time.sleep(1)
     dc.allow_port(SERVER_FW, PORT)
     yield dc, client, reg[SERVER]["network_ip"]
     dc.allow_port(SERVER_FW, PORT)
-    server.exec_run(["sh", "-c", f"pkill -f 'nc -l -p {PORT}' || true"])
+    server.exec_run(["sh", "-c", f"pkill -f '[n]c -l -p {PORT}' || true"])
 
 
-def reachable(client, ip):
-    code, _ = client.exec_run(["sh", "-c", f"nc -z -w 2 {ip} {PORT}"])
-    return code == 0
+def reachable(client, ip, attempts=3):
+    """True if any attempt connects (the listener re-arms between connections)."""
+    for _ in range(attempts):
+        code, _ = client.exec_run(["sh", "-c", f"nc -z -w 2 {ip} {PORT}"])
+        if code == 0:
+            return True
+        time.sleep(0.5)
+    return False
 
 
 def test_blocked_port_is_unreachable_from_another_branch(lab):
