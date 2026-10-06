@@ -3,9 +3,11 @@
 Resolves device/owner names via registry.json, then checks or changes
 container state via the Docker SDK — this IS the on/off state we care about."""
 import json
-import time
 import re
 import shlex
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 import docker
 import requests
 from pathlib import Path
@@ -78,6 +80,7 @@ def power_on(name_or_owner):
         was_running = c.status == "running"
         if not was_running:
             c.start()
+            _invalidate_dashboard_cache()
         results.append({
             "id": d["id"],
             "already_in_that_state": was_running,
@@ -92,7 +95,10 @@ def power_off(name_or_owner):
         c = _client.containers.get(d["container"])
         was_stopped = c.status != "running"
         if not was_stopped:
-            c.stop()
+            # Lab containers run a plain sleep as PID 1 and ignore SIGTERM, so the
+            # default 10 s grace period is just dead waiting; 2 s is plenty.
+            c.stop(timeout=2)
+            _invalidate_dashboard_cache()
         results.append({
             "id": d["id"],
             "already_in_that_state": was_stopped,
@@ -209,6 +215,7 @@ def _change_port(fw_id, port, protocol, action, label):
     for chain in FIREWALL_CHAINS:
         _set_port_rule(c, chain, protocol, port, action)
     _persist_rules(c)
+    _audit_cache.pop(d["id"], None)
     return {"id": d["id"], "port": port, "protocol": protocol,
             "chains": list(FIREWALL_CHAINS), "new_action": label}
 
@@ -308,26 +315,41 @@ def _container_cpu_percent(container):
     return None
 
 
-def list_devices_dashboard():
-    """Device list shaped for the web Dashboard (id, name, type, ip, status, cpu).
-    Reads the exact same registry.json + Docker SDK as list_devices() above."""
+# The dashboard polls every few seconds. Asking Docker for CPU stats one container
+# at a time made every poll take 15+ seconds and starved every other request
+# (power, confirm, chat tools). So: fetch the container list once, read CPU stats
+# in parallel, and share one short-lived cached result between callers.
+DASHBOARD_TTL = 3.0
+_dash_cache = {"ts": 0.0, "data": None}
+_dash_lock = threading.Lock()
+
+
+def _invalidate_dashboard_cache():
+    _dash_cache["ts"] = 0.0
+
+
+def _compute_dashboard():
     devices = _load_registry()
+    try:
+        containers = {c.name: c for c in _client.containers.list(all=True)}
+    except docker.errors.DockerException:
+        containers = {}
+    running = [d for d in devices
+               if d["container"] in containers and containers[d["container"]].status == "running"]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        cpu_values = list(pool.map(lambda d: _container_cpu_percent(containers[d["container"]]), running))
+    cpu_by_id = {d["id"]: v for d, v in zip(running, cpu_values)}
+
     results = []
     for d in devices:
-        try:
-            c = _client.containers.get(d["container"])
-            raw_status = c.status
-        except docker.errors.NotFound:
-            raw_status = "not found"
-
-        if raw_status == "running":
-            cpu = _container_cpu_percent(c)
+        c = containers.get(d["container"])
+        if c is not None and c.status == "running":
+            cpu = cpu_by_id.get(d["id"])
             cpu = round(cpu) if cpu is not None else 0
             status = "warning" if cpu >= 80 else "online"
         else:
             cpu = 0
             status = "offline"
-
         results.append({
             "id": d["id"],
             "name": d["id"],
@@ -338,6 +360,29 @@ def list_devices_dashboard():
             "traffic": 0,
         })
     return results
+
+
+def list_devices_dashboard():
+    """Device list shaped for the web Dashboard (id, name, type, ip, status, cpu).
+    Cached for DASHBOARD_TTL seconds; concurrent callers share one computation."""
+    with _dash_lock:
+        if _dash_cache["data"] is None or time.monotonic() - _dash_cache["ts"] >= DASHBOARD_TTL:
+            _dash_cache["data"] = _compute_dashboard()
+            _dash_cache["ts"] = time.monotonic()
+        return [dict(d) for d in _dash_cache["data"]]
+
+
+_audit_cache = {}
+
+
+def _cached_audit(fw_id, ttl=10.0):
+    """audit_firewall() runs iptables in the container; don't repeat it on every poll."""
+    hit = _audit_cache.get(fw_id)
+    if hit and time.monotonic() - hit[0] < ttl:
+        return hit[1]
+    result = audit_firewall(fw_id)
+    _audit_cache[fw_id] = (time.monotonic(), result)
+    return result
 
 
 def get_alerts():
@@ -357,7 +402,7 @@ def get_alerts():
         if d["type"] != "firewall":
             continue
         try:
-            audit = audit_firewall(d["id"])
+            audit = _cached_audit(d["id"])
         except Exception:
             continue
         for finding in audit["findings"]:

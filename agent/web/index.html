@@ -385,7 +385,6 @@ body[data-net-mode="real"] .sim-only { display: none; }
     <div class="section-title" data-i18n="navIntelligence">Intelligence</div>
 
     <nav>
-        <a href="#" class="nav-link" data-view="chat" data-i18n="navAiAssistant">AI Assistant</a>
         <a href="#" class="nav-link disabled" data-i18n="navReports">Reports</a>
         <a href="#" class="nav-link" id="reset-demo" data-i18n="navRefresh">Refresh Now</a>
     </nav>
@@ -1064,6 +1063,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
                     if (!ack) return;
                 }
                 ok.disabled = no.disabled = true;
+                label.textContent = "Working\u2026 " + p.summary;
                 Api.confirm(p.pending_id, true, ack).then(function (r) {
                     done(r.error ? ("Error: " + r.error) : ("Done: " + p.summary));
                 }).catch(function () { done("Error: could not reach the server."); });
@@ -1123,7 +1123,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
         switch: "Switch", server: "Server", "real-device": "Device"
     };
 
-    var dashState = { devices: [], alerts: [], logs: [], connected: false, lastError: null, pending: {} };
+    var dashState = { devices: [], alerts: [], logs: [], connected: false, lastError: null, pending: {}, busy: {} };
 
     function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
 
@@ -1260,6 +1260,11 @@ body[data-net-mode="real"] .sim-only { display: none; }
             // and Logs views need the same live device list as the Dashboard.
             if (currentView !== "dashboard" && currentView !== "devices" && currentView !== "logs") return;
 
+            // Never stack a new poll on top of one that is still running: a slow
+            // backend would otherwise pile up requests and starve power/confirm calls.
+            if (Dashboard._refreshing) return;
+            Dashboard._refreshing = true;
+
             var requestedMode = netMode;
             var calls = [Api.devices(requestedMode), Api.alerts(requestedMode)];
             // Logs are only fetched while that view is actually open — no
@@ -1287,6 +1292,8 @@ body[data-net-mode="real"] .sim-only { display: none; }
                 dashState.connected = false;
                 dashState.lastError = err.message || String(err);
                 Dashboard.renderConnectionState();
+            }).then(function () {
+                Dashboard._refreshing = false;
             });
         },
 
@@ -1427,7 +1434,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
                         ? "--"
                         : '<span class="cpu-bar-track"><span class="cpu-bar-fill" style="width:' + d.cpu + '%"></span></span>' + d.cpu + "%";
                     var canPower = d.type !== "router";
-                    var isPending = !!dashState.pending[d.id];
+                    var isPending = !!(dashState.pending[d.id] || dashState.busy[d.id]);
                     var powerBtn = canPower
                         ? '<button class="btn-light-netmind power-toggle" data-id="' + d.id + '" data-action="' + (d.status === "offline" ? "on" : "off") + '"' + (isPending ? " disabled" : "") + ">" +
                           (isPending ? "…" : (d.status === "offline" ? "Power On" : "Power Off")) + "</button>"
@@ -1482,7 +1489,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
         // فنسوي استعلام متكرر قصير لين تتأكد الحالة الحقيقية أو تنتهي المحاولات.
         verifyPower: function (id, expectedStatus) {
             var attempts = 0;
-            var maxAttempts = 8;   // تقريباً 8 × 700ms ≈ 5.6 ثانية كحد أقصى
+            var maxAttempts = 14;  // about 14 x 700 ms, plus request time
             var intervalMs = 700;
 
             // finish() دايماً تمسح pending وتعيد الرسم، حتى لو صار استثناء غير
@@ -1594,6 +1601,81 @@ body[data-net-mode="real"] .sim-only { display: none; }
         }
     };
 
+    /* In-page confirmation dialog and toast. Browser pop-ups (confirm/alert) can be
+       suppressed by Chrome, which made confirmations appear "inconsistently". */
+    function askConfirm(opts) {
+        return new Promise(function (resolve) {
+            var overlay = document.createElement("div");
+            overlay.setAttribute("data-testid", "confirm-dialog");
+            overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:3000;display:flex;align-items:center;justify-content:center;";
+            var box = document.createElement("div");
+            box.style.cssText = "background:var(--panel);color:var(--text);border:1px solid var(--accent);border-radius:12px;padding:22px 24px;max-width:460px;width:90%;box-shadow:0 12px 40px rgba(0,0,0,.5);";
+            var h = document.createElement("div");
+            h.style.cssText = "font-weight:600;font-size:1.05rem;margin-bottom:8px;";
+            h.textContent = opts.title || "Confirm action";
+            var p = document.createElement("div");
+            p.style.cssText = "margin-bottom:14px;";
+            p.textContent = opts.summary;
+            box.appendChild(h);
+            box.appendChild(p);
+            var ackBox = null;
+            if (opts.protectedIds && opts.protectedIds.length) {
+                var warn = document.createElement("label");
+                warn.style.cssText = "display:block;margin-bottom:14px;color:var(--danger-text);";
+                ackBox = document.createElement("input");
+                ackBox.type = "checkbox";
+                ackBox.style.marginInlineEnd = "8px";
+                warn.appendChild(ackBox);
+                warn.appendChild(document.createTextNode("\u26A0 Protected device (" + opts.protectedIds.join(", ") + "). I understand this can disrupt the network."));
+                box.appendChild(warn);
+            }
+            var row = document.createElement("div");
+            row.style.cssText = "display:flex;gap:10px;justify-content:flex-end;";
+            var cancel = document.createElement("button");
+            cancel.textContent = "Cancel";
+            cancel.setAttribute("data-testid", "confirm-cancel");
+            cancel.className = "btn btn-secondary btn-sm";
+            var ok = document.createElement("button");
+            ok.textContent = "Confirm";
+            ok.setAttribute("data-testid", "confirm-ok");
+            ok.className = "btn btn-danger btn-sm";
+            if (ackBox) {
+                ok.disabled = true;
+                ackBox.addEventListener("change", function () { ok.disabled = !ackBox.checked; });
+            }
+            function close(result) {
+                document.removeEventListener("keydown", onKey);
+                overlay.remove();
+                resolve(result);
+            }
+            function onKey(e) { if (e.key === "Escape") close({ ok: false }); }
+            cancel.addEventListener("click", function () { close({ ok: false }); });
+            ok.addEventListener("click", function () { close({ ok: true, ack: !!(ackBox && ackBox.checked) }); });
+            document.addEventListener("keydown", onKey);
+            row.appendChild(cancel);
+            row.appendChild(ok);
+            box.appendChild(row);
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+            cancel.focus();
+        });
+    }
+
+    function notify(message, isError) {
+        var t = document.createElement("div");
+        t.setAttribute("data-testid", "toast");
+        t.textContent = message;
+        t.style.cssText = "position:fixed;bottom:24px;inset-inline-end:24px;z-index:3100;padding:12px 16px;border-radius:10px;max-width:380px;" +
+            "background:" + (isError ? "var(--danger-bg)" : "var(--success-bg)") + ";color:" + (isError ? "var(--danger-text)" : "var(--success-text)") +
+            ";border:1px solid var(--border);box-shadow:0 6px 24px rgba(0,0,0,.35);";
+        document.body.appendChild(t);
+        setTimeout(function () { t.remove(); }, 6000);
+    }
+
+    function safeRender() {
+        try { Dashboard.renderAll(); } catch (err) { console.error("NetMind: render failed", err); }
+    }
+
     function initDashboardHandlers() {
         document.getElementById("devices-tbody").addEventListener("click", function (e) {
             var btn = e.target.closest(".power-toggle");
@@ -1601,68 +1683,63 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
             var id = btn.getAttribute("data-id");
             var action = btn.getAttribute("data-action"); // "on" | "off"
-            if (action === "off") {
-                // Power-off is destructive: the server returns a pending action that
-                // the user must confirm before anything is executed.
-                btn.disabled = true;
-                Api.power(id, "off").then(function (res) { return res.json(); }).then(function (p) {
-                    if (p.status !== "pending_confirmation") {
-                        throw new Error(p.error || "unexpected response");
-                    }
-                    var ack = false;
-                    var ok = window.confirm(p.summary + (p.protected.length ? "\n\n\u26A0 PROTECTED: " + p.protected.join(", ") : "") + "\n\nConfirm?");
-                    if (ok && p.requires_protected_ack) {
-                        ack = window.confirm("This is a protected device (" + p.protected.join(", ") + "). Are you absolutely sure?");
-                        ok = ack;
-                    }
-                    return Api.confirm(p.pending_id, ok, ack).then(function (r) {
-                        if (ok && r.error) throw new Error(r.error);
-                        if (ok) return Dashboard.verifyPower(id, "offline");
-                    });
-                }).catch(function (err) {
-                    alert("Power-off failed: " + err.message);
-                }).then(function () { btn.disabled = false; Dashboard.refresh(); });
-                return;
-            }
-            var expectedStatus = action === "on" ? "online" : "offline";
-            var device = dashState.devices.find(function (d) { return d.id === id; });
-            var previousStatus = device ? device.status : null;
+            if (dashState.busy[id] || dashState.pending[id]) return;
 
-            // تحديث فوري بالواجهة قبل ما ننتظر Docker يخلص — هذا اللي يصلح
-            // الإحساس بالبطء، لأن المستخدم يشوف النتيجة فوراً بدل ما ينتظر
-            // رحلة POST + GET كاملة.
-            if (device) {
-                device.status = expectedStatus;
-                if (expectedStatus === "offline") device.cpu = 0;
-            }
-            dashState.pending[id] = expectedStatus;
-
-            // الرسم محاط بـ try/catch عمداً — لو صار أي استثناء هنا ما يوقف
-            // تنفيذ أمر التشغيل/الإطفاء الفعلي (اللي بالأسفل)، فيضل الزر معلّق
-            // للأبد بدون ما يوصل حتى يرسل الطلب الحقيقي للباك اند.
-            try {
-                Dashboard.renderStats();
-                Dashboard.renderDevicesTable();
-                Dashboard.renderDevicesGrid();
-            } catch (renderErr) {
-                console.error("NetMind: render error after optimistic power update", renderErr);
-            }
-
-            Api.power(id, action).then(function (res) {
-                if (!res.ok) throw new Error("HTTP " + res.status);
-                return Dashboard.verifyPower(id, expectedStatus);
-            }).catch(function (err) {
-                console.error("NetMind: power action failed", err);
-                // فشل الطلب نفسه — رجّع الحالة القديمة
+            // One place that always puts the button back, whatever happens.
+            var released = false;
+            function release() {
+                if (released) return;
+                released = true;
+                clearTimeout(safety);
+                delete dashState.busy[id];
                 delete dashState.pending[id];
-                if (device) device.status = previousStatus;
-                try {
-                    Dashboard.renderAll();
-                } catch (renderErr2) {
-                    console.error("NetMind: renderAll failed after power error", renderErr2);
+                safeRender();
+                Dashboard.refresh();
+            }
+            var safety = setTimeout(release, 45000); // never leave a button stuck on "..."
+
+            dashState.busy[id] = true;
+            safeRender();
+
+            var device = dashState.devices.find(function (d) { return d.id === id; });
+            var expected = action === "on" ? "online" : "offline";
+
+            function applyOptimistic() {
+                if (device) {
+                    device.status = expected;
+                    if (expected === "offline") device.cpu = 0;
                 }
-                alert("تعذّر تنفيذ العملية: " + err.message);
-            });
+                dashState.pending[id] = expected; // keeps the new state through periodic polls
+                safeRender();
+            }
+
+            var flow;
+            if (action === "on") {
+                applyOptimistic();
+                flow = Api.power(id, "on").then(function (res) {
+                    if (!res.ok) throw new Error("HTTP " + res.status);
+                    return Dashboard.verifyPower(id, expected);
+                });
+            } else {
+                // Power-off is destructive: the server only creates a pending action,
+                // which runs once the user confirms in the dialog below.
+                flow = Api.power(id, "off").then(function (res) { return res.json(); }).then(function (p) {
+                    if (p.status !== "pending_confirmation") throw new Error(p.error || "unexpected response");
+                    return askConfirm({ title: "Confirm power off", summary: p.summary, protectedIds: p.protected }).then(function (choice) {
+                        return Api.confirm(p.pending_id, choice.ok, choice.ack).then(function (r) {
+                            if (!choice.ok) return;
+                            if (r.error) throw new Error(r.error);
+                            applyOptimistic();
+                            return Dashboard.verifyPower(id, expected);
+                        });
+                    });
+                });
+            }
+
+            flow.catch(function (err) {
+                console.error("NetMind: power action failed", err);
+                notify("Power " + action + " failed: " + (err.message || err), true);
+            }).then(release);
         });
 
         document.getElementById("allAlertsModal").addEventListener("show.bs.modal", function () { Dashboard.renderAlertsModal(); });
