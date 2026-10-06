@@ -204,3 +204,48 @@ def test_audit_log_writes_jsonl(tmp_path):
     log = core.AuditLog(path=path)
     log.record("chat:1", "get_status", {"a": 1}, {"ok": 1}, "executed")
     assert json.loads(path.read_text().splitlines()[0])["tool"] == "get_status"
+
+
+# ---- model talks about an action but never calls the tool -----------------
+DESTRUCTIVE_TOOLS_SCHEMA = [{"function": {"name": n}} for n in
+                            ("get_status", "block_port", "power_off")]
+
+
+def run_with_tools(client, call_tool, user_input, tools):
+    history = [{"role": "system", "content": "sys"}]
+    steps = []
+    reply = core.run_query(client, "m", user_input, history, tools, call_tool, steps=steps)
+    return reply, steps, history
+
+
+def test_fake_pending_claim_without_tool_call_is_retried():
+    client = FakeClient([
+        make_msg("I've queued that - please press Confirm."),            # no tool call!
+        make_msg(calls=[("block_port", '{"fw_id": "fw-branch1", "port": 2222}')]),
+        make_msg("Waiting for your confirmation."),
+    ])
+    calls = []
+    reply, steps, history = run_with_tools(
+        client, lambda n, a: calls.append(n) or {"status": "pending_confirmation"},
+        "block port 2222 on fw-branch1", DESTRUCTIVE_TOOLS_SCHEMA)
+    assert calls == ["block_port"] and reply == "Waiting for your confirmation."
+    assert any("System note" in m.get("content", "") for m in history if m["role"] == "user")
+
+
+def test_refusal_of_action_request_is_retried():
+    client = FakeClient([make_msg("I can't modify firewall rules."),
+                         make_msg(calls=[("block_port", "{}")]), make_msg("ok")])
+    calls = []
+    run_with_tools(client, lambda n, a: calls.append(n) or {}, "block port 22 on fw-branch1",
+                   DESTRUCTIVE_TOOLS_SCHEMA)
+    assert calls == ["block_port"]
+
+
+def test_plain_question_is_not_retried_more_than_once_and_real_mode_never():
+    client = FakeClient([make_msg("A firewall filters traffic.")])
+    reply, steps, _ = run_with_tools(client, lambda n, a: {}, "what does block mean?",
+                                     DESTRUCTIVE_TOOLS_SCHEMA)
+    assert reply == "A firewall filters traffic." and steps == []   # one retry, then returned
+    real_tools = [{"function": {"name": "list_devices"}}]
+    client = FakeClient([make_msg("I can't block ports on real devices.")])
+    assert not core.needs_tool_retry("block port 22", "I can't block ports on real devices.", real_tools, [])

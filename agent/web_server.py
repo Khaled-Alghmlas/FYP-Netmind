@@ -283,8 +283,11 @@ SIMULATED_PROMPT = (
     "changed, rather than implying an action just happened. "
     "Destructive tools (power_off, block_port, allow_port, change_camera_credentials) "
     "are NOT executed when you call them: they return status 'pending_confirmation'. "
-    "Tell the user exactly what is waiting for their confirmation and that they must "
-    "press Confirm in the chat; never claim the action was done until the user has confirmed."
+    "To block/allow a port, power a device off, or change a camera password you MUST call "
+    "the tool; never say an action is pending, queued, done or impossible unless you called "
+    "the tool in this turn and its result says so. After the tool returns "
+    "'pending_confirmation', tell the user what is waiting for their confirmation and that they "
+    "must press Confirm in the chat; never claim the action was done until the user has confirmed."
 )
 
 # ---------------------------------------------------------------------------

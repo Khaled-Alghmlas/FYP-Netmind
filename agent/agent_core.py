@@ -6,6 +6,7 @@ without a lab or an API key. web_server.py wires the real client and the real
 device functions into it.
 """
 import json
+import re
 import threading
 import time
 import uuid
@@ -303,6 +304,36 @@ class Guard:
 
 
 # ---------------------------------------------------------------------------
+# Catching "talked about it but never called the tool"
+# ---------------------------------------------------------------------------
+# The model sometimes answers an action request in prose ("I've queued that,
+# please confirm" or "I can't do that") WITHOUT calling the tool. Nothing is then
+# pending, so the UI has nothing to show. Detect that and make it try again.
+DESTRUCTIVE_INTENT = re.compile(
+    r"\b(block|unblock|allow|power\s*off|turn\s*off|shut\s*(down|off)|"
+    r"(change|set|reset|update)\b.{0,30}\bpassword)\b", re.I)
+PENDING_CLAIM = re.compile(
+    r"(pending|queued|awaiting|waiting).{0,60}confirm|press\s+\W{0,3}confirm|"
+    r"need.{0,25}confirm", re.I)
+RETRY_NOTE = (
+    "[System note: you did not call any tool in your last reply, so nothing was done and "
+    "nothing is pending. If the user asked for an action (block/allow a port, power a device "
+    "off, change a camera password) you MUST call the matching tool now. Never say an action "
+    "is pending, queued, done, or impossible without calling the tool first. If the user did "
+    "not ask for an action, simply repeat your answer.]")
+
+
+def needs_tool_retry(user_input, reply, tools, turn_steps):
+    """True when the model should have called a destructive tool but did not."""
+    available = {t["function"]["name"] for t in tools}
+    if not (available & set(DESTRUCTIVE_TOOLS)):
+        return False  # e.g. real-network mode has no destructive tools
+    if any(s["tool"] in DESTRUCTIVE_TOOLS for s in turn_steps):
+        return False
+    return bool(DESTRUCTIVE_INTENT.search(user_input or "") or PENDING_CLAIM.search(reply or ""))
+
+
+# ---------------------------------------------------------------------------
 # The tool-calling loop
 # ---------------------------------------------------------------------------
 def _parse_args(raw):
@@ -333,7 +364,7 @@ def partial_summary(steps, rounds):
 
 
 def run_query(client, model, user_input, history, tools, call_tool, steps=None,
-              max_rounds=MAX_ROUNDS):
+              max_rounds=MAX_ROUNDS, max_retries=1):
     """Run one user turn.
 
     call_tool(name, args) -> result executes (or guards) a tool call.
@@ -342,6 +373,7 @@ def run_query(client, model, user_input, history, tools, call_tool, steps=None,
     """
     history.append({"role": "user", "content": user_input})
     turn_steps = []
+    retries = 0
 
     for _ in range(max_rounds):
         try:
@@ -355,7 +387,12 @@ def run_query(client, model, user_input, history, tools, call_tool, steps=None,
         history.append(msg_to_dict(msg))
 
         if not msg.tool_calls:
-            return msg.content or ""
+            reply = msg.content or ""
+            if retries < max_retries and needs_tool_retry(user_input, reply, tools, turn_steps):
+                retries += 1
+                history.append({"role": "user", "content": RETRY_NOTE})
+                continue
+            return reply
 
         for call in msg.tool_calls:
             fn_name = call.function.name
