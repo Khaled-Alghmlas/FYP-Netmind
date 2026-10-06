@@ -112,8 +112,8 @@ html[dir="rtl"] .logo { text-align: right; }
 .logo .logo-net { display: inline-block; }
 .logo .logo-mind { color: var(--accent); }
 
-/* Alerts / Reports / Refresh Now are pinned to the bottom of the sidebar */
-.sidebar-bottom { margin-top: auto; padding-top: 16px; }
+/* Alerts / Reports / Refresh Now sit directly under the main links */
+.sidebar-secondary { margin-top: 3px; }
 
 .section-title {
     font-size: 11px; color: var(--muted); text-transform: uppercase;
@@ -389,7 +389,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
         <a href="#" class="nav-link nav-primary" data-view="logs" id="navLogs" data-i18n="navLogs">Logs</a>
     </nav>
 
-    <nav class="sidebar-bottom">
+    <nav class="sidebar-secondary">
         <a href="#" class="nav-link disabled" data-i18n="navAlerts">Alerts</a>
         <a href="#" class="nav-link disabled" data-i18n="navReports">Reports</a>
         <a href="#" class="nav-link" id="reset-demo" data-i18n="navRefresh">Refresh Now</a>
