@@ -2,6 +2,10 @@
 """Generates a Containerlab topology YAML for the NetMind lab network.
 Addressing plan lives in branches.py's compute_addressing() - single source
 of truth shared with build_registry.py, so they can never drift apart."""
+import argparse
+import os
+import subprocess
+import sys
 import yaml
 from branches import CORE_ROUTER, ALPINE_IMAGE, FRR_IMAGE, FIREWALL_IMAGE, CAMERA_IMAGE, BRANCHES, compute_addressing
 
@@ -76,10 +80,52 @@ with open("netmind-large.clab.yml", "w") as f:
     yaml.dump(topology, f, sort_keys=False, default_flow_style=False)
 
 print(f"Generated {len(nodes)} nodes, {len(links)} links -> netmind-large.clab.yml")
-print("\nBridges you must create on the host before deploying:")
-for br in bridges_to_create:
-    print(f"  sudo ip link add {br} type bridge && sudo ip link set {br} up")
-print("\nHost-level FORWARD rules needed for inter-bridge routing (run once, does not persist across reboot):")
-for br in bridges_to_create:
-    print(f"  sudo iptables -I FORWARD -i {br} -j ACCEPT")
-    print(f"  sudo iptables -I FORWARD -o {br} -j ACCEPT")
+
+
+def _sh(cmd, check=True):
+    """Run a host command, using sudo when not root."""
+    if os.geteuid() != 0:
+        cmd = ["sudo"] + cmd
+    return subprocess.run(cmd, capture_output=True, text=True, check=check)
+
+
+def ensure_bridge(name):
+    """Create the Linux bridge if it does not exist and bring it up. Idempotent."""
+    exists = subprocess.run(["ip", "link", "show", name], capture_output=True).returncode == 0
+    if not exists:
+        _sh(["ip", "link", "add", name, "type", "bridge"])
+        print(f"  created bridge {name}")
+    else:
+        print(f"  bridge {name} already exists")
+    _sh(["ip", "link", "set", name, "up"])
+
+
+def ensure_forward_rule(flag, bridge):
+    """Add `iptables -I FORWARD <flag> <bridge> -j ACCEPT` only if missing. Idempotent."""
+    rule = ["FORWARD", flag, bridge, "-j", "ACCEPT"]
+    if _sh(["iptables", "-C"] + rule, check=False).returncode != 0:
+        _sh(["iptables", "-I"] + rule)
+
+
+def create_bridges():
+    print("\nEnsuring host bridges and FORWARD rules (idempotent):")
+    for br in bridges_to_create:
+        ensure_bridge(br)
+        ensure_forward_rule("-i", br)
+        ensure_forward_rule("-o", br)
+
+
+parser = argparse.ArgumentParser(description="Generate the NetMind containerlab topology.")
+parser.add_argument("--create-bridges", action="store_true",
+                    help="idempotently create the host bridges and FORWARD rules (needs sudo)")
+if __name__ == "__main__":
+    args = parser.parse_args()
+    if args.create_bridges:
+        try:
+            create_bridges()
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            sys.exit(f"Failed to create bridges: {e}")
+    else:
+        print("\nBridges needed on the host (run with --create-bridges to create them):")
+        for br in bridges_to_create:
+            print(f"  {br}")

@@ -669,6 +669,14 @@ body[data-net-mode="real"] .sim-only { display: none; }
             return fetchJson(Api.base + (mode === "real" ? "/api/real-logs" : "/api/logs"));
         },
 
+        confirm: function (pendingId, approve, ackProtected) {
+            return fetch(Api.base + "/api/confirm", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ pending_id: pendingId, approve: approve, acknowledge_protected: !!ackProtected })
+            }).then(function (res) { return res.json(); });
+        },
+
         power: function (id, state) {
             return fetch(Api.base + "/api/devices/" + encodeURIComponent(id) + "/power", {
                 method: "POST",
@@ -1030,6 +1038,47 @@ body[data-net-mode="real"] .sim-only { display: none; }
         return div;
     }
 
+    /* Confirm / Cancel buttons for destructive actions the assistant asked for.
+       Only these buttons (via /api/confirm) can execute them — never the model. */
+    function renderPending(container, pending) {
+        if (!pending || !pending.length) return;
+        pending.forEach(function (p) {
+            var box = document.createElement("div");
+            box.className = "pending-action";
+            box.style.cssText = "margin-top:10px;padding:10px;border:1px solid #d9534f;border-radius:8px;";
+            var warn = p.protected && p.protected.length ? " \u26A0 Protected: " + p.protected.join(", ") : "";
+            var label = document.createElement("div");
+            label.textContent = (lang === "ar" ? "بانتظار تأكيدك: " : "Awaiting your confirmation: ") + p.summary + warn;
+            var ok = document.createElement("button");
+            ok.textContent = lang === "ar" ? "تأكيد" : "Confirm";
+            ok.className = "btn btn-sm btn-danger";
+            var no = document.createElement("button");
+            no.textContent = lang === "ar" ? "إلغاء" : "Cancel";
+            no.className = "btn btn-sm btn-secondary";
+            no.style.marginInlineStart = "8px";
+            function done(msg) { box.textContent = msg; }
+            ok.addEventListener("click", function () {
+                var ack = false;
+                if (p.requires_protected_ack) {
+                    ack = window.confirm("PROTECTED device(s): " + p.protected.join(", ") + "\n" + p.summary + "\n\nAre you absolutely sure?");
+                    if (!ack) return;
+                }
+                ok.disabled = no.disabled = true;
+                Api.confirm(p.pending_id, true, ack).then(function (r) {
+                    done(r.error ? ("Error: " + r.error) : ("Done: " + p.summary));
+                }).catch(function () { done("Error: could not reach the server."); });
+            });
+            no.addEventListener("click", function () {
+                ok.disabled = no.disabled = true;
+                Api.confirm(p.pending_id, false).then(function () { done("Cancelled: " + p.summary); });
+            });
+            box.appendChild(label);
+            box.appendChild(ok);
+            box.appendChild(no);
+            container.appendChild(box);
+        });
+    }
+
     var Chat = {
         send: function () {
             var message = inputBox.value.trim();
@@ -1049,6 +1098,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
                 var r = formatMessage(data.reply);
                 placeholder.innerHTML = r.html + renderSteps(data.steps);
                 if (r.hasTable) placeholder.classList.add("has-table");
+                renderPending(placeholder, data.pending);
             }).catch(function () {
                 placeholder.textContent = STRINGS[lang].error;
             }).then(function () {
@@ -1551,6 +1601,29 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
             var id = btn.getAttribute("data-id");
             var action = btn.getAttribute("data-action"); // "on" | "off"
+            if (action === "off") {
+                // Power-off is destructive: the server returns a pending action that
+                // the user must confirm before anything is executed.
+                btn.disabled = true;
+                Api.power(id, "off").then(function (res) { return res.json(); }).then(function (p) {
+                    if (p.status !== "pending_confirmation") {
+                        throw new Error(p.error || "unexpected response");
+                    }
+                    var ack = false;
+                    var ok = window.confirm(p.summary + (p.protected.length ? "\n\n\u26A0 PROTECTED: " + p.protected.join(", ") : "") + "\n\nConfirm?");
+                    if (ok && p.requires_protected_ack) {
+                        ack = window.confirm("This is a protected device (" + p.protected.join(", ") + "). Are you absolutely sure?");
+                        ok = ack;
+                    }
+                    return Api.confirm(p.pending_id, ok, ack).then(function (r) {
+                        if (ok && r.error) throw new Error(r.error);
+                        if (ok) return Dashboard.verifyPower(id, "offline");
+                    });
+                }).catch(function (err) {
+                    alert("Power-off failed: " + err.message);
+                }).then(function () { btn.disabled = false; Dashboard.refresh(); });
+                return;
+            }
             var expectedStatus = action === "on" ? "online" : "offline";
             var device = dashState.devices.find(function (d) { return d.id === id; });
             var previousStatus = device ? device.status : null;

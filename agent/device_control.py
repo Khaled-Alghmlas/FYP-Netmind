@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-import time
 """Core device control functions for the NetMind agent.
 Resolves device/owner names via registry.json, then checks or changes
 container state via the Docker SDK — this IS the on/off state we care about."""
 import json
+import time
 import re
 import shlex
 import docker
@@ -12,7 +12,17 @@ from pathlib import Path
 
 REGISTRY_PATH = Path(__file__).resolve().parent.parent / "topology" / "registry.json"
 
-_client = docker.from_env()
+class _LazyDockerClient:
+    """Connects to the Docker daemon on first use, so this module can be
+    imported (e.g. by unit tests / CI) on a machine with no Docker."""
+    _real = None
+
+    def __getattr__(self, name):
+        if _LazyDockerClient._real is None:
+            _LazyDockerClient._real = docker.from_env()
+        return getattr(_LazyDockerClient._real, name)
+
+_client = _LazyDockerClient()
 
 def _load_registry():
     with open(REGISTRY_PATH) as f:
@@ -94,11 +104,16 @@ def power_off(name_or_owner):
 # Ports commonly worth flagging when left open to any source.
 SENSITIVE_PORTS = {22: "SSH", 23: "Telnet", 21: "FTP", 3389: "RDP"}
 
-def _parse_iptables_rules(raw_output):
-    """Parse `iptables -L INPUT -n --line-numbers` output into structured rules."""
+# INPUT filters traffic addressed to the firewall container itself; FORWARD
+# filters traffic *passing through* it to hosts in other branches. Blocking
+# only INPUT therefore does not stop e.g. SSH to a host behind the firewall.
+FIREWALL_CHAINS = ("INPUT", "FORWARD")
+
+def _parse_iptables_rules(raw_output, chain="INPUT"):
+    """Parse `iptables -L <chain> -n --line-numbers` output into structured rules."""
     lines = raw_output.strip().split("\n")
     rules = []
-    for line in lines[2:]:  # skip "Chain INPUT..." and the header row
+    for line in lines[2:]:  # skip "Chain X (policy ...)" and the header row
         parts = line.split(None, 5)
         if len(parts) < 5:
             continue
@@ -109,6 +124,7 @@ def _parse_iptables_rules(raw_output):
         if m:
             port = int(m.group(1))
         rules.append({
+            "chain": chain,
             "rule_num": int(num),
             "action": target,
             "protocol": prot,
@@ -130,19 +146,23 @@ def _run_iptables(container, args):
     return output.decode(errors="replace")
 
 def list_firewall_rules(fw_id):
+    """Rules from both the INPUT and FORWARD chains; each rule carries its chain."""
     d = _get_firewall_device(fw_id)
     c = _client.containers.get(d["container"])
-    raw = _run_iptables(c, ["-L", "INPUT", "-n", "--line-numbers"])
-    return {"id": d["id"], "rules": _parse_iptables_rules(raw)}
+    rules = []
+    for chain in FIREWALL_CHAINS:
+        raw = _run_iptables(c, ["-L", chain, "-n", "--line-numbers"])
+        rules.extend(_parse_iptables_rules(raw, chain))
+    return {"id": d["id"], "rules": rules}
 
 def _effective_port_rules(rules):
-    """iptables is first-match-wins: for each (port, protocol), only the
+    """iptables is first-match-wins: for each (chain, port, protocol), only the
     topmost (lowest rule_num) rule is actually in effect."""
     effective = {}
-    for r in rules:
+    for r in sorted(rules, key=lambda r: (r.get("chain", "INPUT"), r["rule_num"])):
         if r["port"] is None:
             continue
-        key = (r["port"], r["protocol"])
+        key = (r.get("chain", "INPUT"), r["port"], r["protocol"])
         if key not in effective:
             effective[key] = r
     return effective
@@ -151,8 +171,8 @@ def get_open_ports(fw_id):
     rules = list_firewall_rules(fw_id)["rules"]
     effective = _effective_port_rules(rules)
     open_ports = [
-        {"port": port, "protocol": proto, "source": r["source"]}
-        for (port, proto), r in effective.items()
+        {"port": port, "protocol": proto, "chain": chain, "source": r["source"]}
+        for (chain, port, proto), r in effective.items()
         if r["action"] == "ACCEPT"
     ]
     return {"id": fw_id, "open_ports": open_ports}
@@ -161,10 +181,11 @@ def audit_firewall(fw_id):
     rules = list_firewall_rules(fw_id)["rules"]
     effective = _effective_port_rules(rules)
     findings = []
-    for (port, proto), r in effective.items():
+    for (chain, port, proto), r in effective.items():
         if port in SENSITIVE_PORTS and r["action"] == "ACCEPT" and r["source"] in ("0.0.0.0/0", "::/0"):
+            where = "to the firewall itself" if chain == "INPUT" else "through the firewall to other hosts"
             findings.append(
-                f"Port {port} ({SENSITIVE_PORTS[port]}) is open to any source — consider restricting it."
+                f"Port {port} ({SENSITIVE_PORTS[port]}) is open to any source {where} ({chain}) — consider restricting it."
             )
     return {"id": fw_id, "findings": findings, "clean": len(findings) == 0}
 
@@ -173,19 +194,29 @@ def _persist_rules(container):
     if exit_code != 0:
         raise RuntimeError(f"Failed to persist firewall rules: {output.decode(errors='replace').strip()}")
 
-def block_port(fw_id, port, protocol="tcp"):
+def _set_port_rule(container, chain, protocol, port, action):
+    """Make `action` the single rule for (chain, protocol, port): remove any
+    existing ACCEPT/DROP rules for it, then insert the new one at the top.
+    Idempotent — calling it twice leaves exactly one rule."""
+    for old in ("ACCEPT", "DROP"):
+        while container.exec_run(["iptables", "-C", chain, "-p", protocol, "--dport", str(port), "-j", old])[0] == 0:
+            _run_iptables(container, ["-D", chain, "-p", protocol, "--dport", str(port), "-j", old])
+    _run_iptables(container, ["-I", chain, "1", "-p", protocol, "--dport", str(port), "-j", action])
+
+def _change_port(fw_id, port, protocol, action, label):
     d = _get_firewall_device(fw_id)
     c = _client.containers.get(d["container"])
-    _run_iptables(c, ["-I", "INPUT", "1", "-p", protocol, "--dport", str(port), "-j", "DROP"])
+    for chain in FIREWALL_CHAINS:
+        _set_port_rule(c, chain, protocol, port, action)
     _persist_rules(c)
-    return {"id": d["id"], "port": port, "protocol": protocol, "new_action": "blocked"}
+    return {"id": d["id"], "port": port, "protocol": protocol,
+            "chains": list(FIREWALL_CHAINS), "new_action": label}
+
+def block_port(fw_id, port, protocol="tcp"):
+    return _change_port(fw_id, port, protocol, "DROP", "blocked")
 
 def allow_port(fw_id, port, protocol="tcp"):
-    d = _get_firewall_device(fw_id)
-    c = _client.containers.get(d["container"])
-    _run_iptables(c, ["-I", "INPUT", "1", "-p", protocol, "--dport", str(port), "-j", "ACCEPT"])
-    _persist_rules(c)
-    return {"id": d["id"], "port": port, "protocol": protocol, "new_action": "allowed"}
+    return _change_port(fw_id, port, protocol, "ACCEPT", "allowed")
 
 CAMERA_PORT = 8080
 
@@ -245,21 +276,6 @@ def change_camera_credentials(cam_id, new_password):
     if exit_code != 0:
         raise RuntimeError(f"Failed to update camera credentials: {output.decode(errors='replace').strip()}")
     return {"id": d["id"], "credentials_changed": True}
-
-if __name__ == "__main__":
-    import sys
-    if len(sys.argv) < 3:
-        print("Usage: device_control.py <status|ip|on|off> <name_or_owner>")
-        sys.exit(1)
-    action, target = sys.argv[1], sys.argv[2]
-    if action == "status":
-        print(get_status(target))
-    elif action == "ip":
-        print(get_ip(target))
-    elif action == "on":
-        print(power_on(target))
-    elif action == "off":
-        print(power_off(target))
 
 def list_devices():
     devices = _load_registry()
@@ -354,3 +370,19 @@ def get_alerts():
             })
 
     return alerts
+
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) < 3:
+        print("Usage: device_control.py <status|ip|on|off> <name_or_owner>")
+        sys.exit(1)
+    action, target = sys.argv[1], sys.argv[2]
+    if action == "status":
+        print(get_status(target))
+    elif action == "ip":
+        print(get_ip(target))
+    elif action == "on":
+        print(power_on(target))
+    elif action == "off":
+        print(power_off(target))
