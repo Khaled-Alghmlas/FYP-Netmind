@@ -59,3 +59,11 @@ def test_destructive_action_requires_confirmation_via_api(api):
 def test_dashboard_power_off_needs_confirmation(api):
     r = api.client.post("/api/devices/host-ahmed/power", json={"state": "off"})
     assert r.json()["status"] == "pending_confirmation" and api.called == []
+
+
+def test_confirmation_outcome_is_added_to_chat_history(api):
+    api.script += [msg(calls=[("power_off", '{"name_or_owner": "host-ahmed"}')]), msg("Please confirm.")]
+    body = chat(api, "turn off ahmed").json()
+    api.client.post("/api/confirm", json={"pending_id": body["pending"][0]["pending_id"], "approve": True})
+    history = ws.SESSIONS.get("s1:simulated", "x")
+    assert "no longer pending" in history[-1]["content"] and "executed" in history[-1]["content"]

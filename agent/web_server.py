@@ -514,8 +514,15 @@ class ConfirmRequest(BaseModel):
 def api_confirm(req: ConfirmRequest):
     """User-side confirmation of a destructive action. Only this endpoint (never
     the model) can execute a pending action."""
-    return GUARDS["simulated"].confirm(req.pending_id, req.approve, actor="user",
-                                       acknowledge_protected=req.acknowledge_protected)
+    out = GUARDS["simulated"].confirm(req.pending_id, req.approve, actor="user",
+                                      acknowledge_protected=req.acknowledge_protected)
+    # Tell the model what happened, otherwise it keeps saying "still pending".
+    key = out.pop("session_key", None)
+    if key and out.get("status") in ("executed", "cancelled", "error"):
+        SESSIONS.append(key, {"role": "user", "content": (
+            f"[System note: the user pressed {'Cancel' if out['status'] == 'cancelled' else 'Confirm'} in the UI. "
+            f"Outcome: {out['status']} - {out['summary']}. This action is no longer pending.]")})
+    return out
 
 
 @app.get("/api/pending")

@@ -96,6 +96,12 @@ class SessionStore:
             if key in self._data:
                 self._data[key]["history"][:] = trim_history(history)
 
+    def append(self, key, message):
+        """Add a message to an existing session (no-op if it has expired)."""
+        with self._lock:
+            if key in self._data:
+                self._data[key]["history"].append(message)
+
     def _prune(self, now):
         expired = [k for k, v in self._data.items() if now - v["last"] > self.ttl]
         for k in expired:
@@ -279,11 +285,11 @@ class Guard:
 
         if not approve:
             self.audit.record(actor, p["tool"], p["args"], None, "cancelled")
-            return {"status": "cancelled", "summary": p["summary"]}
+            return {"status": "cancelled", "summary": p["summary"], "session_key": p["session_key"]}
 
         result = self._execute(self.dispatch[p["tool"]], p["tool"], p["args"], actor, "confirmed")
         return {"status": "error" if isinstance(result, dict) and "error" in result else "executed",
-                "summary": p["summary"], "result": result}
+                "summary": p["summary"], "result": result, "session_key": p["session_key"]}
 
     def _execute(self, fn, tool, args, actor, ok_status):
         try:
