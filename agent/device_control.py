@@ -73,20 +73,37 @@ def get_status(name_or_owner):
 def get_ip(name_or_owner):
     return [{"id": d["id"], "type": d["type"], "ip": d["ip"]} for d in find_devices(name_or_owner)]
 
+def _reconnect_after_start(device_id):
+    """Re-attaches a restarted host/camera to its switch. `docker stop` deletes the
+    veth Containerlab created and `docker start` only restores eth0, so the device
+    would otherwise come back running but cut off from the lab network.
+    Never raises: a failed re-attach must not turn a successful power-on into an error."""
+    try:
+        import lab_network  # lazy: lab_network imports this module
+        return lab_network.reconnect_device(device_id)
+    except Exception as e:
+        return {"id": device_id, "error": f"{type(e).__name__}: {e}"}
+
+
 def power_on(name_or_owner):
     results = []
     for d in find_devices(name_or_owner):
         c = _client.containers.get(d["container"])
         was_running = c.status == "running"
+        link = None
         if not was_running:
             c.start()
             _invalidate_dashboard_cache()
-        results.append({
+            link = _reconnect_after_start(d["id"])
+        entry = {
             "id": d["id"],
             "already_in_that_state": was_running,
             "previous_status": _friendly_status(c.status),
             "new_status": "online",
-        })
+        }
+        if link is not None:
+            entry["link"] = link
+        results.append(entry)
     return results
 
 def power_off(name_or_owner):
