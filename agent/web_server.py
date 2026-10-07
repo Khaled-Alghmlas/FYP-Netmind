@@ -19,6 +19,7 @@ from groq import Groq
 
 import agent_core as core
 import device_control as dc
+import lab_network
 import network_scanner as ns
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
@@ -92,6 +93,22 @@ SIMULATED_TOOLS = [
             "name": "list_devices",
             "description": "List every device in the network with its owner, type, and on/off status.",
             "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ping_between",
+            "description": "Ping from one lab device to another over the lab (data-plane) network to check whether the link between them works. Read-only. Use it to verify connectivity, for example after a device was powered off and on. src and dst are device ids; each must match exactly one device.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "src": {"type": "string", "description": "Source device id, e.g. 'host-khalid'"},
+                    "dst": {"type": "string", "description": "Destination device id, e.g. 'host-khalil'"},
+                    "count": {"type": "integer", "description": "Number of pings, 1-5 (default 3)"}
+                },
+                "required": ["src", "dst"],
+            },
         },
     },
     {
@@ -262,6 +279,7 @@ SIMULATED_DISPATCH = {
     "power_off": dc.power_off,
     "list_devices": dc.list_devices,
     "list_devices_on_segment": dc.list_devices_on_segment,
+    "ping_between": lab_network.ping_between,
     "list_firewall_rules": dc.list_firewall_rules,
     "get_open_ports": dc.get_open_ports,
     "audit_firewall": dc.audit_firewall,
