@@ -133,6 +133,21 @@ class AuditLog:
         self.path = Path(path) if path else None
         self.entries = deque(maxlen=max_entries)
         self._lock = threading.Lock()
+        self._load_existing()
+
+    def _load_existing(self):
+        """Pick up entries written by earlier runs so the history survives restarts."""
+        if not self.path or not self.path.exists():
+            return
+        try:
+            with open(self.path, encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        self.entries.append(json.loads(line))
+                    except ValueError:
+                        continue
+        except OSError:
+            pass
 
     def record(self, actor, tool, args, result, status):
         entry = {

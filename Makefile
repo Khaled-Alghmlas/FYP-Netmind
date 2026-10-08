@@ -35,7 +35,7 @@ down:
 	cd $(TOPO_DIR) && sudo containerlab destroy -t $(TOPO) --cleanup
 
 run:
-	cd agent && $(PYTHON) -m uvicorn web_server:app --reload
+	cd agent && $(PYTHON) -m uvicorn web_server:app --host 127.0.0.1 --reload
 
 test:
 	$(PYTHON) -m pytest

@@ -1,2 +1,3 @@
 pytest
 ruff
+playwright>=1.40

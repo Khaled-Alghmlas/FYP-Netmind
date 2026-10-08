@@ -172,6 +172,18 @@ cd agent
 python3 netmind_agent.py
 ```
 
+## Running the server safely
+
+- The server only accepts requests from its own origin (the dashboard it serves) and `make run` binds to `127.0.0.1`, so other websites and other machines cannot reach it. Keep it that way; there is no login yet (planned for Project 2).
+- Powering a device back on re-attaches it to its switch with `containerlab tools veth`, which needs root. Instead of running the whole server with `sudo`, you can allow just that command. Run `sudo visudo -f /etc/sudoers.d/netmind` and add one line (replace `youruser`, and check the path with `which containerlab`):
+
+  ```
+  youruser ALL=(root) NOPASSWD: /usr/bin/containerlab tools veth *
+  ```
+
+  After that `make run` works as a normal user.
+- Alert history is saved to `logs/alerts.json` and the audit log to `logs/audit.jsonl` (both git-ignored). Delete them to start from a clean slate.
+
 ## Dashboard mock-up
 
 `agent/web/Dashboard.html` is served as a static page at
