@@ -343,6 +343,7 @@ def change_camera_credentials(cam_id, new_password):
     exit_code, output = c.exec_run(["sh", "-c", f"printf '%s' {safe_password} > /etc/netmind-camera-creds"])
     if exit_code != 0:
         raise RuntimeError(f"Failed to update camera credentials: {output.decode(errors='replace').strip()}")
+    _camera_cache.pop(d["id"], None)
     return {"id": d["id"], "credentials_changed": True}
 
 def list_devices():
@@ -385,6 +386,7 @@ def _compute_dashboard():
             "name": d["id"],
             "type": d["type"],
             "ip": d.get("ip", ""),
+            "branch": d.get("branch"),
             "status": "online" if c is not None and c.status == "running" else "offline",
         })
     return results
@@ -418,19 +420,31 @@ def _cached_audit(fw_id, ttl=10.0):
     return result
 
 
-def get_firewall_findings():
-    """Current firewall-audit findings as (firewall_id, finding_text) pairs."""
+def get_security_findings():
+    """Current audit findings as (device_id, text, kind) triples: firewall misconfigurations
+    and cameras still on their default password. Devices that cannot be checked are skipped."""
     found = []
     for d in _load_registry():
-        if d["type"] != "firewall":
-            continue
         try:
-            audit = _cached_audit(d["id"])
+            if d["type"] == "firewall":
+                found += [(d["id"], f, "firewall_finding") for f in _cached_audit(d["id"])["findings"]]
+            elif d["type"] == "camera":
+                found += [(d["id"], f, "camera_finding") for f in _cached_camera_check(d["id"])["findings"]]
         except Exception:
             continue
-        for finding in audit["findings"]:
-            found.append((d["id"], finding))
     return found
+
+
+_camera_cache = {}
+
+
+def _cached_camera_check(cam_id, ttl=10.0):
+    hit = _camera_cache.get(cam_id)
+    if hit and time.monotonic() - hit[0] < ttl:
+        return hit[1]
+    result = check_camera_credentials(cam_id)
+    _camera_cache[cam_id] = (time.monotonic(), result)
+    return result
 
 
 if __name__ == "__main__":

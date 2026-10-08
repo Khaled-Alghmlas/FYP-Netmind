@@ -6,15 +6,18 @@ Supports two modes:
             (discovery + online/offline only — no power control, since we're
             just a guest on a real network, not its administrator)
 """
+import json
+from contextlib import asynccontextmanager
 import os
 import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from groq import Groq
@@ -425,7 +428,6 @@ GUARDS = {
 # (on the real network) a device simply joining/leaving — not just explicit
 # button clicks.
 # ============================================================================
-EVENT_LOG = []       # simulated-mode: power on/off + status changes
 REAL_EVENT_LOG = []  # real-network: devices appearing/disappearing
 MAX_LOG_ENTRIES = 300
 
@@ -446,11 +448,53 @@ def _log_event(log, event_type, device_id, device_name, detail):
 
 ALERT_LOG = []        # simulated-mode alert history, newest first (never removed on recovery)
 MAX_ALERTS = 500
+ALERTS_PATH = Path(__file__).resolve().parent.parent / "logs" / "alerts.json"   # None disables saving
 _alert_lock = threading.Lock()
 _alert_seq = 0
 _down_alert = {}      # device_id -> its still-open "offline" alert
 _down_since = {}      # device_id -> ms timestamp it was first seen offline
-_fw_open = {}         # (firewall_id, finding) -> its still-open finding alert
+_finding_open = {}    # (device_id, finding) -> its still-open finding alert
+
+
+def _save_alerts():
+    """Called with _alert_lock held. History survives restarts; saving never breaks a request."""
+    if not ALERTS_PATH:
+        return
+    try:
+        ALERTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = ALERTS_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps(ALERT_LOG), encoding="utf-8")
+        tmp.replace(ALERTS_PATH)
+    except OSError:
+        pass
+
+
+def _load_alerts():
+    """Restores saved history and the 'still open' bookkeeping, so a device that is down
+    across a restart keeps its original alert and its downtime keeps counting."""
+    global _alert_seq
+    if not ALERTS_PATH or not Path(ALERTS_PATH).exists():
+        return
+    try:
+        saved = json.loads(Path(ALERTS_PATH).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    ALERT_LOG[:] = [a for a in saved if isinstance(a, dict)][:MAX_ALERTS]
+    _down_alert.clear()
+    _down_since.clear()
+    _finding_open.clear()
+    for a in ALERT_LOG:
+        try:
+            _alert_seq = max(_alert_seq, int(str(a.get("id", "a0"))[1:]))
+        except ValueError:
+            pass
+        if not a.get("active"):
+            continue
+        if a.get("kind") == "device_offline":
+            _down_alert[a["device"]] = a
+            _down_since[a["device"]] = a["ts"]
+        elif a.get("kind") in ("firewall_finding", "camera_finding"):
+            _finding_open[(a["device"], a.get("finding", ""))] = a
 
 
 def _add_alert(kind, title, detail, device_id=None, **extra):
@@ -487,37 +531,31 @@ def _track_alerts(did, name, old_status, new_status):
 
 
 def _track_sim_status(devices):
-    """Diffs the simulated-lab device list against what we last saw and logs
-    any status transition. Called on every /api/devices request."""
+    """Diffs the simulated-lab device list against what we last saw and raises/closes
+    alerts on any status transition. Called on every /api/devices request."""
     with _alert_lock:
         for d in devices:
             did = d.get("id")
             name = d.get("name", did)
             new_status = d.get("status")
             old_status = _last_sim_status.get(did)
-            if old_status is not None and old_status != new_status:
-                if new_status == "online":
-                    event_type = "power_on"
-                elif new_status == "offline":
-                    event_type = "power_off"
-                else:
-                    event_type = "status_change"
-                _log_event(EVENT_LOG, event_type, did, name, f"{name}: {old_status} → {new_status}")
             _track_alerts(did, name, old_status, new_status)
             _last_sim_status[did] = new_status
+        _save_alerts()
     return devices
 
 
-def _track_firewall_findings():
-    current = set(dc.get_firewall_findings())
+def _track_findings():
+    current = {(dev, text): kind for dev, text, kind in dc.get_security_findings()}
     with _alert_lock:
-        for key in list(_fw_open):
+        for key in list(_finding_open):
             if key not in current:
-                _fw_open.pop(key)["active"] = False
-        for fw_id, finding in sorted(current):
-            if (fw_id, finding) not in _fw_open:
-                _fw_open[(fw_id, finding)] = _add_alert(
-                    "firewall_finding", "Firewall Finding", f"{fw_id}: {finding}", fw_id)
+                _finding_open.pop(key)["active"] = False
+        for (dev, text), kind in sorted(current.items()):
+            if (dev, text) not in _finding_open:
+                title = "Camera Finding" if kind == "camera_finding" else "Firewall Finding"
+                _finding_open[(dev, text)] = _add_alert(kind, title, f"{dev}: {text}", dev, finding=text)
+        _save_alerts()
 
 
 def _track_real_status(devices):
@@ -551,13 +589,28 @@ def run_query(user_input, history, tools, guard, actor, session_key, steps=None)
         steps=steps,
     )
 
-app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+@asynccontextmanager
+async def _lifespan(_app):
+    _load_alerts()   # restore saved alert history before serving
+    yield
+
+
+app = FastAPI(lifespan=_lifespan)
+
+
+@app.middleware("http")
+async def same_origin_only(request: Request, call_next):
+    """The dashboard and the API are served by this one app, so no other website has any
+    business calling it. A browser tags cross-site requests with an Origin header that
+    differs from our own host; refuse those (this is what stops a random web page from
+    powering devices off or confirming actions through the user's browser). No CORS
+    headers are sent either, so other sites cannot read responses."""
+    origin = request.headers.get("origin")
+    if origin and origin != "null" and urlparse(origin).netloc != request.headers.get("host", ""):
+        return JSONResponse({"error": "cross-origin requests are not allowed"}, status_code=403)
+    if origin == "null":
+        return JSONResponse({"error": "cross-origin requests are not allowed"}, status_code=403)
+    return await call_next(request)
 
 class ChatRequest(BaseModel):
     session_id: str
@@ -609,6 +662,67 @@ def api_pending():
     return GUARDS["simulated"].list_pending()
 
 
+ACTION_TOOLS = set(core.DESTRUCTIVE_TOOLS) | {"power_on", "start_camera_stream", "stop_camera_stream"}
+
+
+def _who(actor):
+    actor = actor or ""
+    if actor.startswith("chat"):
+        return "chat"
+    return actor if actor in ("dashboard", "user") else "system"
+
+
+def _action_trail():
+    """The audit log without the read-only lookups, newest first, shaped for the Logs page."""
+    out = []
+    for e in reversed(AUDIT_LOG.list()):
+        if e.get("tool") not in ACTION_TOOLS:
+            continue
+        args = e.get("args") or {}
+        target = args.get("name_or_owner") or args.get("fw_id") or args.get("cam_id") or ""
+        if "port" in args:
+            target = f"{target} {args.get('protocol', 'tcp')}/{args['port']}"
+        result = e.get("result")
+        detail = ""
+        if isinstance(result, dict):
+            detail = result.get("summary") or result.get("error") or ""
+        try:
+            ts = datetime.strptime(e["ts"], "%Y-%m-%dT%H:%M:%S%z").timestamp() * 1000
+        except (KeyError, ValueError):
+            ts = 0
+        out.append({"ts": ts, "who": _who(e.get("actor")), "actor": e.get("actor"), "tool": e["tool"],
+                    "target": target.strip(), "status": e.get("status"), "detail": detail})
+    return out
+
+
+@app.get("/api/report")
+def api_report():
+    """One-page security and reliability summary for the Reports view (simulated lab)."""
+    devices = dc.list_devices_dashboard()
+    _track_sim_status(devices)
+    _track_findings()
+    with _alert_lock:
+        alerts = [dict(a) for a in ALERT_LOG]
+    recoveries = [a["down_seconds"] for a in alerts if a["kind"] == "device_online" and "down_seconds" in a]
+    trail = _action_trail()
+    outcomes = {}
+    for t in trail:
+        outcomes[t["status"]] = outcomes.get(t["status"], 0) + 1
+    return {
+        "generated": int(time.time() * 1000),
+        "devices": {"total": len(devices), "online": sum(d["status"] == "online" for d in devices)},
+        "findings": [{"device": a["device"], "kind": a["kind"], "finding": a.get("finding", a["detail"])}
+                     for a in alerts if a["kind"] in ("firewall_finding", "camera_finding") and a["active"]],
+        "reliability": {
+            "outages": sum(a["kind"] == "device_offline" for a in alerts),
+            "open_outages": sum(a["kind"] == "device_offline" and a["active"] for a in alerts),
+            "avg_recovery_seconds": round(sum(recoveries) / len(recoveries), 1) if recoveries else None,
+            "longest_recovery_seconds": max(recoveries) if recoveries else None,
+        },
+        "actions": {"total": len(trail), "by_status": outcomes},
+    }
+
+
 @app.get("/api/audit")
 def api_audit():
     """Audit log of every tool call: who, what, arguments, result, when."""
@@ -636,15 +750,15 @@ def api_devices():
 def api_alerts():
     """Alert history for the Dashboard (simulated lab), newest first."""
     _track_sim_status(dc.list_devices_dashboard())
-    _track_firewall_findings()
+    _track_findings()
     with _alert_lock:
         return [dict(a) for a in ALERT_LOG]
 
 
 @app.get("/api/logs")
 def api_logs():
-    """ADDED — Device power/status history for the Logs page (simulated lab)."""
-    return EVENT_LOG
+    """Audit trail for the Logs page (simulated lab): what was asked, by whom, and the outcome."""
+    return _action_trail()
 
 
 @app.post("/api/devices/{device_id}/power")

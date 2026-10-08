@@ -17,6 +17,8 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt -r requirements-dev.txt
+      - name: Install headless browser (for the UI smoke test)
+        run: playwright install --with-deps chromium
       - name: Lint (ruff)
         run: ruff check .
       - name: Unit tests (pytest)

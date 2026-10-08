@@ -79,7 +79,11 @@
     --topbar-bg: rgba(30,27,24,0.9);
 }
 
-* { box-sizing: border-box; }
+* { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
 body {
     margin: 0;
@@ -193,15 +197,39 @@ html[dir="rtl"] body { font-family: 'IBM Plex Sans Arabic', 'IBM Plex Sans', san
 .content { padding: 28px; }
 
 /* Dashboard is a single fixed-height page: nothing to scroll, cards share the height. */
-body.no-scroll { height: 100vh; overflow: hidden; }
-body.no-scroll .main { height: 100vh; min-height: 0; display: flex; flex-direction: column; }
-body.no-scroll .content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-body.no-scroll #dashboardView { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-/* g-4 would pull the row 24px past its slot (negative gutter margin) and push the cards onto the screen edge */
-#dashboardView > .row.dash-main { --bs-gutter-y: 0; flex: 1; min-height: 0; margin-bottom: 0 !important; }
+@media (min-width: 992px) and (min-height: 600px) {
+    body.no-scroll { height: 100vh; overflow: hidden; }
+    body.no-scroll .main { height: 100vh; min-height: 0; display: flex; flex-direction: column; }
+    body.no-scroll .content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    body.no-scroll #dashboardView { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    /* g-4 would pull the row 24px past its slot (negative gutter margin) and push the cards onto the screen edge */
+    #dashboardView > .row.dash-main { --bs-gutter-y: 0; flex: 1; min-height: 0; margin-bottom: 0 !important; }
+    #dashboardView > .row.dash-main > [class*="col-"] { min-height: 0; }
+    #dashboardView > .row.dash-main { flex-wrap: nowrap; }
+}
 .dash-card { display: flex; flex-direction: column; min-height: 0; }
-.dash-card .network { flex: 1; min-height: 0; overflow: auto; }
-.dash-card #alerts-list { flex: 1; min-height: 0; overflow: auto; }
+.dash-card .network { flex: 1; min-height: 0; overflow: hidden; padding: 14px; }
+.dash-card .topo-inner { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; }
+.dash-card .node { padding: 8px 14px; font-size: 12.5px; }
+.dash-card .branches { flex-wrap: nowrap; }
+.dash-card .branch { flex: 0 1 auto; }
+.dash-card #alerts-list { overflow: hidden; }
+.dash-card .alert-item { padding: 10px 0; }
+.dash-card .alert-time { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dash-card #alerts-list { flex: 1; min-height: 0; }
+
+.branches { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; align-items: flex-start; width: 100%; }
+.branch { border: 1px dashed var(--border); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.branch .nodes { max-width: 280px; }
+.branch-label { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.report-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.report-grid .stat-card { border: 1px solid var(--border); border-radius: 10px; }
+.report-h { font-size: 13px; font-weight: 600; margin: 18px 0 6px; }
+@media print {
+    .sidebar, .topbar, #report-actions { display: none !important; }
+    .main { margin: 0 !important; }
+    body { background: #fff !important; color: #000 !important; overflow: visible !important; height: auto !important; }
+}
 
 /* ================= CARDS ================= */
 
@@ -406,7 +434,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
     <nav class="sidebar-secondary">
         <a href="#" class="nav-link nav-primary" data-view="alerts" id="navAlerts" data-i18n="navAlerts">Alerts</a>
-        <a href="#" class="nav-link disabled" data-i18n="navReports">Reports</a>
+        <a href="#" class="nav-link nav-primary" data-view="reports" id="navReports" data-i18n="navReports">Reports</a>
     </nav>
 
 </aside>
@@ -454,25 +482,32 @@ body[data-net-mode="real"] .sim-only { display: none; }
         <section id="dashboardView">
 
             <div class="row g-3 mb-4">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <div class="card-custom stat-card">
                         <div class="stat-label" data-i18n="statDevices">Devices</div>
                         <div class="stat-value" id="stat-devices">--</div>
                         <div class="stat-small" id="stat-devices-sub">--</div>
                     </div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <div class="card-custom stat-card">
                         <div class="stat-label" data-i18n="statHealth">Network Health</div>
                         <div class="stat-value" id="stat-health">--</div>
                         <div class="stat-small" id="stat-health-sub">--</div>
                     </div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <div class="card-custom stat-card">
                         <div class="stat-label" data-i18n="statAlerts">Active Alerts</div>
                         <div class="stat-value accent" id="stat-alerts">--</div>
                         <div class="stat-small" data-i18n="statAlertsSub">Requires attention</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card-custom stat-card">
+                        <div class="stat-label" data-i18n="statRecovery">Avg. Recovery Time</div>
+                        <div class="stat-value" id="stat-mttr">--</div>
+                        <div class="stat-small" id="stat-mttr-sub">--</div>
                     </div>
                 </div>
             </div>
@@ -564,6 +599,22 @@ body[data-net-mode="real"] .sim-only { display: none; }
         </section>
 
         <!-- ============================================================
+             REPORTS VIEW — one-page security and reliability summary
+             ============================================================ -->
+        <section id="reportsView" style="display:none">
+            <div class="card-custom p-4">
+                <div class="section-header">
+                    <div>
+                        <h5 data-i18n="reportTitle">Security &amp; Reliability Report</h5>
+                        <p id="report-generated"></p>
+                    </div>
+                    <button class="btn-light-netmind" id="report-actions" data-i18n="reportPrint">Print / Save as PDF</button>
+                </div>
+                <div id="report-body"></div>
+            </div>
+        </section>
+
+        <!-- ============================================================
              LOGS VIEW — device power/status history, pulled from the
              backend's in-memory event log (/api/logs or /api/real-logs).
              ============================================================ -->
@@ -571,20 +622,15 @@ body[data-net-mode="real"] .sim-only { display: none; }
             <div class="card-custom p-4">
                 <div class="section-header">
                     <div>
-                        <h5 data-i18n="logsTitle">Device Log</h5>
-                        <p data-i18n="logsSub">Power and connectivity history for this session</p>
+                        <h5 id="logs-title">Activity Log</h5>
+                        <p id="logs-sub"></p>
                     </div>
                     <span class="accent fw-semibold" id="logs-count-badge">0</span>
                 </div>
                 <div class="table-responsive">
                     <table class="table align-middle">
                         <thead>
-                            <tr>
-                                <th data-i18n="colTime">Time</th>
-                                <th data-i18n="colDevice">Device</th>
-                                <th data-i18n="colEvent">Event</th>
-                                <th data-i18n="colDetails">Details</th>
-                            </tr>
+                            <tr id="logs-thead-row"></tr>
                         </thead>
                         <tbody id="logs-tbody"></tbody>
                     </table>
@@ -655,6 +701,10 @@ body[data-net-mode="real"] .sim-only { display: none; }
             return fetchJson(Api.base + (mode === "real" ? "/api/real-logs" : "/api/logs"));
         },
 
+        report: function () {
+            return fetchJson(Api.base + "/api/report");
+        },
+
         confirm: function (pendingId, approve, ackProtected) {
             return fetch(Api.base + "/api/confirm", {
                 method: "POST",
@@ -719,6 +769,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
         if (realOpt) realOpt.textContent = I18N.t("netReal");
 
         try { window.localStorage.setItem("netmind-net-mode", mode); } catch (e) {}
+        renderChatIntro();
         Dashboard.refresh();
     }
 
@@ -745,10 +796,9 @@ body[data-net-mode="real"] .sim-only { display: none; }
             chatTitle: "AI Assistant", chatSub: "Ask about any device on the network",
             devicesPageTitle: "Devices", devicesPageSub: "Power devices on or off",
             alertsPageTitle: "Alerts", alertsPageSub: "Full alert history",
-            logsPageTitle: "Device Log", logsPageSub: "Power and connectivity history",
-            logsTitle: "Device Log", logsSub: "Power and connectivity history for this session",
+            
             colTime: "Time", colEvent: "Event", colDetails: "Details",
-            noLogs: "No events logged yet — power a device on/off to see it here.",
+            noLogs: "Nothing logged yet — power a device off or ask the assistant to change something and it will show up here.",
             evtPowerOn: "Powered On", evtPowerOff: "Powered Off", evtStatusChange: "Status Changed",
             evtDeviceSeen: "Device Seen", evtDeviceLost: "Device Lost",
             activeDevicesTitle: "Devices",
@@ -776,6 +826,24 @@ body[data-net-mode="real"] .sim-only { display: none; }
             error: "Something went wrong connecting to the server.",
             backendDown: "Could not reach the backend.",
             backendDownHint: "Could not reach the backend. Make sure web_server.py is running.",
+            statRecovery: "Avg. Recovery Time", recoveredN: "%n outage(s) recovered", noRecovery: "No recoveries yet",
+            alertCamera: "Camera Finding",
+            logsPageTitle: "Activity Log", logsPageSub: "Actions taken and network changes",
+            logsSimTitle: "Activity Log", logsSimSub: "Who asked for what, and what happened — power actions, port changes and camera passwords",
+            logsRealTitle: "Network Changes", logsRealSub: "Devices appearing on and dropping off the real network",
+            colWho: "Who", colAction: "Action", colTarget: "Target", colOutcome: "Outcome",
+            whoDashboard: "Dashboard", whoUser: "You (confirmation)", whoChat: "Chat assistant", whoSystem: "System",
+            actPower_on: "Power on", actPower_off: "Power off", actBlock_port: "Block port", actAllow_port: "Allow port",
+            actChange_camera_credentials: "Change camera password", actStart_camera_stream: "Start camera stream", actStop_camera_stream: "Stop camera stream",
+            outPending: "Awaiting confirmation", outConfirmed: "Confirmed & executed", outExecuted: "Executed",
+            outCancelled: "Cancelled", outDenied: "Denied", outExpired: "Expired", outError: "Failed",
+            reportsPageTitle: "Reports", reportsPageSub: "Security and reliability summary",
+            reportTitle: "Security & Reliability Report", reportPrint: "Print / Save as PDF",
+            reportGenerated: "Generated", reportRealNote: "Reports are available in the simulated lab only.",
+            repDevices: "Devices online", repOutages: "Outages", repAvgRecovery: "Avg. recovery", repLongest: "Longest outage",
+            repActions: "Actions taken", repOpen: "still down",
+            repFindingsTitle: "Open security findings", repNoFindings: "No open findings — firewalls and cameras look clean.",
+            repActionsTitle: "Operator activity", repNoActions: "No actions recorded yet.",
             sysOnline: "System Online", devsDown: "%n Device(s) Down",
             healthGreat: "Excellent condition", healthOk: "Good condition", healthBad: "Needs attention",
             onlineOffline: "%a online · %b offline",
@@ -784,6 +852,13 @@ body[data-net-mode="real"] .sim-only { display: none; }
             noAlerts: "No alerts.",
             noDevicesReal: "No real network scan results yet.",
             noDevicesSim: "No devices found in registry.json.",
+            welcomeSubReal: "Ask about the devices on your real network — see who is connected, look up an IP, or check whether something is online.",
+            examplesReal: [
+                "Which devices are on my network right now?",
+                "How many devices are connected?",
+                "Is 192.168.1.1 online?",
+                "What's the IP address of my phone?"
+            ],
             examples: [
                 "What's Khalid's IP address?",
                 "List all devices",
@@ -801,10 +876,9 @@ body[data-net-mode="real"] .sim-only { display: none; }
             chatTitle: "مساعد NetMind", chatSub: "اسأل عن أي جهاز بالشبكة",
             devicesPageTitle: "الأجهزة", devicesPageSub: "تشغيل أو إطفاء الأجهزة",
             alertsPageTitle: "التنبيهات", alertsPageSub: "السجل الكامل للتنبيهات",
-            logsPageTitle: "سجل الأحداث", logsPageSub: "سجل التشغيل والاتصال",
-            logsTitle: "سجل الأحداث", logsSub: "سجل التشغيل والاتصال لهذه الجلسة",
+            
             colTime: "الوقت", colEvent: "الحدث", colDetails: "التفاصيل",
-            noLogs: "لا توجد أحداث مسجّلة بعد — شغّل أو أطفئ جهاز عشان تشوفه هنا.",
+            noLogs: "لا يوجد شيء مسجّل بعد — أطفئ جهازاً أو اطلب من المساعد تغييراً وسيظهر هنا.",
             evtPowerOn: "تم التشغيل", evtPowerOff: "تم الإطفاء", evtStatusChange: "تغيّرت الحالة",
             evtDeviceSeen: "ظهر جهاز", evtDeviceLost: "اختفى جهاز",
             activeDevicesTitle: "الأجهزة",
@@ -832,6 +906,24 @@ body[data-net-mode="real"] .sim-only { display: none; }
             error: "صار خطأ بالاتصال بالسيرفر.",
             backendDown: "تعذّر الاتصال بالباك اند.",
             backendDownHint: "تعذّر الاتصال بالباك اند. تأكد أن web_server.py شغّال.",
+            statRecovery: "متوسط وقت الاستعادة", recoveredN: "تمت استعادة %n انقطاع", noRecovery: "لا توجد استعادات بعد",
+            alertCamera: "ملاحظة على الكاميرا",
+            logsPageTitle: "سجل النشاط", logsPageSub: "الإجراءات المنفذة وتغيّرات الشبكة",
+            logsSimTitle: "سجل النشاط", logsSimSub: "من طلب ماذا وماذا حدث — الإطفاء وتغيير المنافذ وكلمات مرور الكاميرات",
+            logsRealTitle: "تغيّرات الشبكة", logsRealSub: "الأجهزة التي ظهرت أو اختفت من الشبكة الحقيقية",
+            colWho: "المنفّذ", colAction: "الإجراء", colTarget: "الهدف", colOutcome: "النتيجة",
+            whoDashboard: "لوحة التحكم", whoUser: "أنت (التأكيد)", whoChat: "مساعد المحادثة", whoSystem: "النظام",
+            actPower_on: "تشغيل", actPower_off: "إطفاء", actBlock_port: "حظر منفذ", actAllow_port: "السماح بمنفذ",
+            actChange_camera_credentials: "تغيير كلمة مرور الكاميرا", actStart_camera_stream: "تشغيل بث الكاميرا", actStop_camera_stream: "إيقاف بث الكاميرا",
+            outPending: "بانتظار التأكيد", outConfirmed: "تم التأكيد والتنفيذ", outExecuted: "تم التنفيذ",
+            outCancelled: "أُلغي", outDenied: "مرفوض", outExpired: "انتهت صلاحيته", outError: "فشل",
+            reportsPageTitle: "التقارير", reportsPageSub: "ملخص الأمان والاعتمادية",
+            reportTitle: "تقرير الأمان والاعتمادية", reportPrint: "طباعة / حفظ PDF",
+            reportGenerated: "أُنشئ في", reportRealNote: "التقارير متاحة في شبكة المحاكاة فقط.",
+            repDevices: "الأجهزة المتصلة", repOutages: "الانقطاعات", repAvgRecovery: "متوسط الاستعادة", repLongest: "أطول انقطاع",
+            repActions: "الإجراءات المنفذة", repOpen: "لا يزال متوقفاً",
+            repFindingsTitle: "الملاحظات الأمنية المفتوحة", repNoFindings: "لا توجد ملاحظات مفتوحة — جدران الحماية والكاميرات سليمة.",
+            repActionsTitle: "نشاط المشغّل", repNoActions: "لم تُسجَّل إجراءات بعد.",
             sysOnline: "النظام يعمل", devsDown: "%n جهاز متوقف",
             healthGreat: "حالة ممتازة", healthOk: "حالة جيدة", healthBad: "تحتاج إلى اهتمام",
             onlineOffline: "%a متصل · %b غير متصل",
@@ -840,6 +932,13 @@ body[data-net-mode="real"] .sim-only { display: none; }
             noAlerts: "لا توجد تنبيهات.",
             noDevicesReal: "لا توجد نتائج فحص للشبكة الحقيقية بعد.",
             noDevicesSim: "لا توجد أجهزة في registry.json.",
+            welcomeSubReal: "اسأل عن الأجهزة في شبكتك الحقيقية — اعرف من المتصل، أو ابحث عن عنوان IP، أو تحقق إن كان جهاز ما متصلاً.",
+            examplesReal: [
+                "وش الأجهزة الموجودة بشبكتي الحين؟",
+                "كم جهاز متصل بالشبكة؟",
+                "هل 192.168.1.1 متصل؟",
+                "وش عنوان IP لجوالي؟"
+            ],
             examples: [
                 "وش عنوان IP لخالد؟",
                 "اعرض كل الأجهزة",
@@ -855,6 +954,21 @@ body[data-net-mode="real"] .sim-only { display: none; }
         t: function (key) { return STRINGS[lang][key]; }
     };
 
+    // Suggestions and welcome line depend on the mode: the real network can only be looked at, not controlled.
+    function renderChatIntro() {
+        var s = STRINGS[lang], real = netMode === "real";
+        if (!examplesEl) return;
+        document.getElementById("welcomeSub").textContent = real ? s.welcomeSubReal : s.welcomeSub;
+        examplesEl.innerHTML = "";
+        (real ? s.examplesReal : s.examples).forEach(function (text) {
+            var div = document.createElement("div");
+            div.className = "example";
+            div.textContent = text;
+            div.addEventListener("click", function () { inputBox.value = text; Chat.send(); });
+            examplesEl.appendChild(div);
+        });
+    }
+
     function applyLang() {
         var s = STRINGS[lang];
         document.documentElement.lang = lang;
@@ -867,18 +981,10 @@ body[data-net-mode="real"] .sim-only { display: none; }
         });
 
         document.getElementById("welcomeTitle").textContent = s.welcomeTitle;
-        document.getElementById("welcomeSub").textContent = s.welcomeSub;
         document.getElementById("inputBox").placeholder = s.placeholder;
         document.getElementById("sendBtn").textContent = s.send;
 
-        examplesEl.innerHTML = "";
-        s.examples.forEach(function (text) {
-            var div = document.createElement("div");
-            div.className = "example";
-            div.textContent = text;
-            div.addEventListener("click", function () { inputBox.value = text; Chat.send(); });
-            examplesEl.appendChild(div);
-        });
+        renderChatIntro();
 
         updatePageHeader();
         applyNetMode(netMode); // refresh mode label + table header text in new language
@@ -898,8 +1004,8 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
     function updatePageHeader() {
         var s = STRINGS[lang];
-        var titles = { chat: s.chatTitle, devices: s.devicesPageTitle, dashboard: s.dashboardTitle, logs: s.logsPageTitle, alerts: s.alertsPageTitle };
-        var subs = { chat: s.chatSub, devices: s.devicesPageSub, dashboard: s.dashboardSub, logs: s.logsPageSub, alerts: s.alertsPageSub };
+        var titles = { chat: s.chatTitle, devices: s.devicesPageTitle, dashboard: s.dashboardTitle, logs: s.logsPageTitle, alerts: s.alertsPageTitle, reports: s.reportsPageTitle };
+        var subs = { chat: s.chatSub, devices: s.devicesPageSub, dashboard: s.dashboardSub, logs: s.logsPageSub, alerts: s.alertsPageSub, reports: s.reportsPageSub };
         document.getElementById("pageTitle").textContent = titles[currentView] || s.dashboardTitle;
         document.getElementById("pageSubtitle").textContent = subs[currentView] || s.dashboardSub;
     }
@@ -912,6 +1018,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
         document.getElementById("devicesView").style.display = view === "devices" ? "" : "none";
         document.getElementById("logsView").style.display = view === "logs" ? "" : "none";
         document.getElementById("alertsView").style.display = view === "alerts" ? "" : "none";
+        document.getElementById("reportsView").style.display = view === "reports" ? "" : "none";
         document.getElementById("chatView").style.display = view === "chat" ? "" : "none";
 
         // Only the Overview section's links (.nav-primary) get the active
@@ -924,8 +1031,11 @@ body[data-net-mode="real"] .sim-only { display: none; }
         });
 
         updatePageHeader();
+        if (view === "dashboard") { Dashboard.renderTopology(); Dashboard.renderAlerts(); }
 
-        if (view === "dashboard" || view === "devices" || view === "logs" || view === "alerts") {
+        if (view === "reports") {
+            Reports.load();
+        } else if (view === "dashboard" || view === "devices" || view === "logs" || view === "alerts") {
             Dashboard.refresh();
         } else {
             document.getElementById("inputBox").focus();
@@ -1014,8 +1124,23 @@ body[data-net-mode="real"] .sim-only { display: none; }
         return html;
     }
 
-    function addMsg(text, cls, raw) {
+    // The conversation is kept in sessionStorage so a page refresh doesn't wipe it.
+    var chatLog = [];
+    function saveChat() {
+        try {
+            var keep = chatLog.filter(function (e) { return e.text !== "..."; }).slice(-60);
+            if (keep.length) window.sessionStorage.setItem("netmind-chat", JSON.stringify({ sid: sessionId, log: keep }));
+            else window.sessionStorage.removeItem("netmind-chat");
+        } catch (e) {}
+    }
+
+    function addMsg(text, cls, raw, restoring) {
         var div = document.createElement("div");
+        if (!restoring) {
+            div._entry = { text: text, cls: cls, raw: !!raw };
+            chatLog.push(div._entry);
+            saveChat();
+        }
         div.className = "msg " + cls;
         if (raw) {
             var r = formatMessage(text);
@@ -1087,11 +1212,16 @@ body[data-net-mode="real"] .sim-only { display: none; }
             var placeholder = addMsg("...", "bot");
 
             Api.chat(sessionId, message, netMode).then(function (data) {
+                placeholder._entry.text = data.reply;
+                placeholder._entry.raw = true;
+                saveChat();
                 var r = formatMessage(data.reply);
                 placeholder.innerHTML = r.html + renderSteps(data.steps);
                 if (r.hasTable) placeholder.classList.add("has-table");
                 renderPending(placeholder, data.pending);
             }).catch(function () {
+                placeholder._entry.text = STRINGS[lang].error;
+                saveChat();
                 placeholder.textContent = STRINGS[lang].error;
             }).then(function () {
                 sendBtn.disabled = false;
@@ -1117,6 +1247,30 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
     var dashState = { devices: [], alerts: [], logs: [], connected: false, lastError: null, pending: {}, busy: {} };
 
+    // Pop a toast for alerts that appeared since the last poll (the first poll just records them).
+    var seenAlerts = null;
+    function announceNewAlerts() {
+        var fresh = [];
+        if (seenAlerts) fresh = dashState.alerts.filter(function (a) { return !seenAlerts[a.id]; });
+        seenAlerts = {};
+        dashState.alerts.forEach(function (a) { seenAlerts[a.id] = true; });
+        fresh.slice(0, 3).forEach(function (a) {
+            var x = alertText(a);
+            notify(x.title + " — " + x.detail, a.kind !== "device_online");
+        });
+    }
+
+    // Shrinks `inner` until it fits `box` with no scrolling in either direction.
+    function fitToBox(box, inner) {
+        inner.style.zoom = 1;
+        if (!box.clientHeight) return;   // view is hidden right now
+        var z = 1;
+        while ((box.scrollHeight > box.clientHeight + 1 || box.scrollWidth > box.clientWidth + 1) && z > 0.45) {
+            z -= 0.05;
+            inner.style.zoom = z.toFixed(2);
+        }
+    }
+
     function activeAlerts() { return dashState.alerts.filter(function (a) { return a.active !== false; }); }
 
     function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
@@ -1140,11 +1294,24 @@ body[data-net-mode="real"] .sim-only { display: none; }
         return Math.floor(s / 3600) + u.h + " " + String(Math.floor((s % 3600) / 60)).padStart(2, "0") + u.m;
     }
 
+    function translateFinding(text) {
+        if (lang !== "ar" || !text) return text;
+        var m = text.match(/^Port (\d+) \((.+?)\) is open to any source (to the firewall itself|through the firewall to other hosts) \((INPUT|FORWARD)\)/);
+        if (m) {
+            return "المنفذ " + m[1] + " (" + m[2] + ") مفتوح لأي مصدر " +
+                (m[3] === "to the firewall itself" ? "باتجاه جدار الحماية نفسه" : "عبر جدار الحماية إلى الأجهزة الأخرى") +
+                " (" + m[4] + ") — يُنصح بتقييده.";
+        }
+        if (/default password/.test(text)) return "الكاميرا تستخدم كلمة المرور الافتراضية (admin) — يُنصح بتغييرها.";
+        return text;
+    }
+
     function alertText(a) {
         var t = STRINGS[lang], dev = a.device || "";
+        if (a.kind === "camera_finding") return { title: t.alertCamera, detail: dev + ": " + translateFinding(a.finding || a.detail) };
         if (a.kind === "device_offline") return { title: t.alertOffline, detail: dev + " " + t.alertWentOffline };
         if (a.kind === "device_online") return { title: t.alertOnline, detail: dev + " " + t.alertBackAfter + " " + fmtDuration(a.down_seconds || 0) };
-        if (a.kind === "firewall_finding") return { title: t.alertFirewall, detail: a.detail || "" };
+        if (a.kind === "firewall_finding") return { title: t.alertFirewall, detail: dev + ": " + translateFinding(a.finding || a.detail) };
         return { title: a.title || "", detail: a.detail || "" };
     }
 
@@ -1325,6 +1492,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
                     if (d) d.status = dashState.pending[id];
                 });
                 dashState.alerts = (results[1] || []).sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+                announceNewAlerts();
                 if (results[2]) dashState.logs = results[2];
                 dashState.connected = true;
                 dashState.lastError = null;
@@ -1364,6 +1532,12 @@ body[data-net-mode="real"] .sim-only { display: none; }
             document.getElementById("stat-health").textContent = s.total ? (s.health + "%") : "--";
             document.getElementById("stat-health-sub").textContent = s.health >= 90 ? STRINGS[lang].healthGreat : (s.health >= 70 ? STRINGS[lang].healthOk : STRINGS[lang].healthBad);
             document.getElementById("stat-alerts").textContent = activeAlerts().length;
+            var rec = dashState.alerts.filter(function (a) { return a.kind === "device_online" && a.down_seconds != null; });
+            document.getElementById("stat-mttr").textContent = rec.length
+                ? fmtDuration(rec.reduce(function (t, a) { return t + a.down_seconds; }, 0) / rec.length) : "--";
+            document.getElementById("stat-mttr-sub").textContent = rec.length
+                ? STRINGS[lang].recoveredN.replace("%n", rec.length) : STRINGS[lang].noRecovery;
+            document.title = (activeAlerts().length ? "(" + activeAlerts().length + ") " : "") + "NetMind";
 
             var badge = document.getElementById("online-badge");
             if (!dashState.connected) return;
@@ -1392,28 +1566,60 @@ body[data-net-mode="real"] .sim-only { display: none; }
                 container.innerHTML = '<div class="empty-note">' + STRINGS[lang].noDevicesSim + "</div>";
                 return;
             }
+            var inner = document.createElement("div");
+            inner.className = "topo-inner";
+            container.appendChild(inner);
             var router = dashState.devices.find(function (d) { return d.type === "router"; });
             var rest = dashState.devices.filter(function (d) { return d.type !== "router"; });
 
             function nodeEl(d) {
                 var el = document.createElement("div");
                 el.className = "node" + (d.type === "router" ? " node-main" : "");
-                if (d.status === "warning") el.className += " node-warning";
                 if (d.status === "offline") el.className += " node-offline";
-                var sub = d.status === "offline" ? "offline" : (d.ip || "");
+                var sub = d.status === "offline" ? statusLabel("offline").toLowerCase() : (d.ip || "");
                 el.innerHTML = d.name + "<small>" + sub + "</small>";
                 return el;
             }
             if (router) {
-                container.appendChild(nodeEl(router));
+                inner.appendChild(nodeEl(router));
                 var conn = document.createElement("div");
                 conn.className = "connection";
-                container.appendChild(conn);
+                inner.appendChild(conn);
             }
+
+            // One box per branch: its firewall first, then the hosts and cameras behind it.
+            var groups = {}, order = [];
+            rest.forEach(function (d) {
+                var key = d.branch || "";
+                if (!groups[key]) { groups[key] = []; order.push(key); }
+                groups[key].push(d);
+            });
+            order.sort();
             var wrap = document.createElement("div");
-            wrap.className = "nodes";
-            rest.forEach(function (d) { wrap.appendChild(nodeEl(d)); });
-            container.appendChild(wrap);
+            wrap.className = "branches";
+            order.forEach(function (key) {
+                var members = groups[key].slice().sort(function (a, b) {
+                    return (b.type === "firewall") - (a.type === "firewall") || a.id.localeCompare(b.id);
+                });
+                var box = document.createElement("div");
+                box.className = "branch";
+                if (key) {
+                    var label = document.createElement("div");
+                    label.className = "branch-label";
+                    label.textContent = key;
+                    box.appendChild(label);
+                }
+                var fw = members.filter(function (d) { return d.type === "firewall"; });
+                var others = members.filter(function (d) { return d.type !== "firewall"; });
+                fw.forEach(function (d) { box.appendChild(nodeEl(d)); });
+                var nodes = document.createElement("div");
+                nodes.className = "nodes";
+                others.forEach(function (d) { nodes.appendChild(nodeEl(d)); });
+                if (others.length) box.appendChild(nodes);
+                wrap.appendChild(box);
+            });
+            inner.appendChild(wrap);
+            fitToBox(container, inner);
         },
 
         renderAlerts: function () {
@@ -1424,7 +1630,11 @@ body[data-net-mode="real"] .sim-only { display: none; }
                 list.innerHTML = '<div class="empty-note">' + (netMode === "real" ? STRINGS[lang].noAlertsReal : STRINGS[lang].noAlertsSim) + "</div>";
                 return;
             }
-            dashState.alerts.slice(0, 3).forEach(function (a) { list.insertAdjacentHTML("beforeend", alertItemHtml(a, false)); });
+            dashState.alerts.slice(0, 8).forEach(function (a) { list.insertAdjacentHTML("beforeend", alertItemHtml(a, false)); });
+            // Show as many recent alerts as fit in the card; the rest are on the Alerts page.
+            while (list.clientHeight && list.scrollHeight > list.clientHeight + 1 && list.children.length > 1) {
+                list.removeChild(list.lastChild);
+            }
         },
 
         renderAlertsView: function () {
@@ -1528,6 +1738,14 @@ body[data-net-mode="real"] .sim-only { display: none; }
         renderLogs: function () {
             var tbody = document.getElementById("logs-tbody");
             if (!tbody) return; // only present on the Logs view
+            var t = STRINGS[lang];
+            var sim = netMode === "simulated";
+
+            document.getElementById("logs-title").textContent = sim ? t.logsSimTitle : t.logsRealTitle;
+            document.getElementById("logs-sub").textContent = sim ? t.logsSimSub : t.logsRealSub;
+            var cols = sim ? [t.colTime, t.colWho, t.colAction, t.colTarget, t.colOutcome, t.colDetails]
+                           : [t.colTime, t.colDevice, t.colEvent, t.colDetails];
+            document.getElementById("logs-thead-row").innerHTML = cols.map(function (c) { return "<th>" + c + "</th>"; }).join("");
 
             var logs = dashState.logs || [];
             var badge = document.getElementById("logs-count-badge");
@@ -1535,27 +1753,42 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
             tbody.innerHTML = "";
             if (logs.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="empty-note">' + STRINGS[lang].noLogs + "</td></tr>";
+                tbody.innerHTML = '<tr><td colspan="' + cols.length + '" class="empty-note">' + t.noLogs + "</td></tr>";
                 return;
             }
 
+            var OUTCOME = {
+                pending: { label: t.outPending, cls: "status-warning" }, confirmed: { label: t.outConfirmed, cls: "status-online" },
+                executed: { label: t.outExecuted, cls: "status-online" }, cancelled: { label: t.outCancelled, cls: "status-warning" },
+                denied: { label: t.outDenied, cls: "status-offline" }, expired: { label: t.outExpired, cls: "status-warning" },
+                error: { label: t.outError, cls: "status-offline" }
+            };
+            var WHO = { dashboard: t.whoDashboard, user: t.whoUser, chat: t.whoChat, system: t.whoSystem };
             var EVENT_META = {
-                power_on: { label: STRINGS[lang].evtPowerOn, cls: "status-online" },
-                power_off: { label: STRINGS[lang].evtPowerOff, cls: "status-offline" },
-                status_change: { label: STRINGS[lang].evtStatusChange, cls: "status-warning" },
-                device_seen: { label: STRINGS[lang].evtDeviceSeen, cls: "status-online" },
-                device_lost: { label: STRINGS[lang].evtDeviceLost, cls: "status-offline" }
+                device_seen: { label: t.evtDeviceSeen, cls: "status-online" },
+                device_lost: { label: t.evtDeviceLost, cls: "status-offline" }
             };
 
             logs.forEach(function (entry) {
-                var meta = EVENT_META[entry.type] || { label: entry.type, cls: "status-warning" };
                 var tr = document.createElement("tr");
                 var timeStr = new Date(entry.ts).toLocaleString(lang === "ar" ? "ar-SA" : "en-US");
-                tr.innerHTML =
-                    "<td>" + timeStr + "</td>" +
-                    '<td class="fw-semibold">' + (entry.device_name || entry.device_id || "--") + "</td>" +
-                    '<td><span class="status ' + meta.cls + '">' + meta.label + "</span></td>" +
-                    "<td>" + (entry.detail || "") + "</td>";
+                if (sim) {
+                    var o = OUTCOME[entry.status] || { label: entry.status, cls: "status-warning" };
+                    tr.innerHTML =
+                        "<td>" + timeStr + "</td>" +
+                        "<td>" + (WHO[entry.who] || entry.who) + "</td>" +
+                        '<td class="fw-semibold">' + (t["act" + entry.tool.charAt(0).toUpperCase() + entry.tool.slice(1)] || entry.tool) + "</td>" +
+                        "<td>" + (entry.target || "--") + "</td>" +
+                        '<td><span class="status ' + o.cls + '">' + o.label + "</span></td>" +
+                        "<td>" + (entry.detail || "") + "</td>";
+                } else {
+                    var meta = EVENT_META[entry.type] || { label: entry.type, cls: "status-warning" };
+                    tr.innerHTML =
+                        "<td>" + timeStr + "</td>" +
+                        '<td class="fw-semibold">' + (entry.device_name || entry.device_id || "--") + "</td>" +
+                        '<td><span class="status ' + meta.cls + '">' + meta.label + "</span></td>" +
+                        "<td>" + (entry.detail || "") + "</td>";
+                }
                 tbody.appendChild(tr);
             });
         },
@@ -1566,6 +1799,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
             this.renderAlerts();
             this.renderDevicesGrid();
             this.renderAlertsView();
+            Reports.render();
             this.renderLogs();
         }
     };
@@ -1645,7 +1879,47 @@ body[data-net-mode="real"] .sim-only { display: none; }
         try { Dashboard.renderAll(); } catch (err) { console.error("NetMind: render failed", err); }
     }
 
+    var Reports = {
+        data: null,
+        load: function () {
+            if (netMode !== "simulated") { Reports.data = null; Reports.render(); return; }
+            Api.report().then(function (d) { Reports.data = d; Reports.render(); })
+                .catch(function (err) { console.error("NetMind: report failed", err); });
+        },
+        render: function () {
+            var body = document.getElementById("report-body");
+            if (!body) return;
+            var t = STRINGS[lang], d = Reports.data;
+            document.getElementById("report-generated").textContent = d ? t.reportGenerated + ": " + new Date(d.generated).toLocaleString(lang === "ar" ? "ar-SA" : "en-US") : "";
+            if (netMode !== "simulated" || !d) { body.innerHTML = '<div class="empty-note">' + (netMode !== "simulated" ? t.reportRealNote : "…") + "</div>"; return; }
+            var r = d.reliability;
+            function card(label, value, sub) {
+                return '<div class="stat-card"><div class="stat-label">' + label + '</div><div class="stat-value">' + value + '</div><div class="stat-small">' + (sub || "&nbsp;") + "</div></div>";
+            }
+            var html = '<div class="report-grid">' +
+                card(t.repDevices, d.devices.online + " / " + d.devices.total) +
+                card(t.repOutages, r.outages, r.open_outages ? r.open_outages + " " + t.repOpen : "") +
+                card(t.repAvgRecovery, r.avg_recovery_seconds == null ? "--" : fmtDuration(r.avg_recovery_seconds)) +
+                card(t.repLongest, r.longest_recovery_seconds == null ? "--" : fmtDuration(r.longest_recovery_seconds)) +
+                card(t.repActions, d.actions.total) + "</div>";
+            html += '<div class="report-h">' + t.repFindingsTitle + "</div>";
+            if (!d.findings.length) html += '<div class="empty-note">' + t.repNoFindings + "</div>";
+            d.findings.forEach(function (f) {
+                html += '<div class="alert-item"><div class="alert-title"><span class="dot"></span>' + f.device + "</div>" +
+                    '<div class="alert-time">' + translateFinding(f.finding) + "</div></div>";
+            });
+            html += '<div class="report-h">' + t.repActionsTitle + "</div>";
+            var by = d.actions.by_status, keys = Object.keys(by);
+            if (!keys.length) html += '<div class="empty-note">' + t.repNoActions + "</div>";
+            else html += "<div>" + keys.map(function (k) {
+                return '<span class="status status-warning" style="margin-inline-end:8px">' + (t["out" + k.charAt(0).toUpperCase() + k.slice(1)] || k) + ": " + by[k] + "</span>";
+            }).join("") + "</div>";
+            body.innerHTML = html;
+        }
+    };
+
     function initDashboardHandlers() {
+        document.getElementById("report-actions").addEventListener("click", function () { window.print(); });
         document.getElementById("devices-grid").addEventListener("click", function (e) {
             var btn = e.target.closest(".power-toggle");
             if (!btn || netMode !== "simulated" || btn.disabled) return;
@@ -1714,6 +1988,14 @@ body[data-net-mode="real"] .sim-only { display: none; }
             }).then(release);
         });
 
+        var resizeTimer = null;
+        window.addEventListener("resize", function () {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(function () {
+                if (currentView === "dashboard") { Dashboard.renderTopology(); Dashboard.renderAlerts(); }
+            }, 150);
+        });
+
         document.getElementById("view-all-alerts").addEventListener("click", function () { showView("alerts"); });
 
     }
@@ -1730,12 +2012,27 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
         document.getElementById("chat-clear").addEventListener("click", function () {
             chatEl.innerHTML = "";
+            chatLog = [];
             chatEl.classList.remove("active");
             welcomeEl.classList.remove("hidden");
             sessionId = crypto.randomUUID();   // a fresh session also drops the server-side history
+            saveChat();
             sendBtn.disabled = false;
             inputBox.focus();
         });
+        try {
+            var saved = JSON.parse(window.sessionStorage.getItem("netmind-chat") || "null");
+            if (saved && saved.log && saved.log.length) {
+                sessionId = saved.sid;
+                welcomeEl.classList.add("hidden");
+                chatEl.classList.add("active");
+                saved.log.forEach(function (e) {
+                    var div = addMsg(e.text, e.cls, e.raw, true);
+                    div._entry = e;
+                    chatLog.push(e);
+                });
+            }
+        } catch (e) {}
         sendBtn.addEventListener("click", function () { Chat.send(); });
         inputBox.addEventListener("keydown", function (e) { if (e.key === "Enter") Chat.send(); });
 
