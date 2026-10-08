@@ -79,7 +79,11 @@
     --topbar-bg: rgba(30,27,24,0.9);
 }
 
-* { box-sizing: border-box; }
+* { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
 body {
     margin: 0;
@@ -204,8 +208,15 @@ html[dir="rtl"] body { font-family: 'IBM Plex Sans Arabic', 'IBM Plex Sans', san
     #dashboardView > .row.dash-main { flex-wrap: nowrap; }
 }
 .dash-card { display: flex; flex-direction: column; min-height: 0; }
-.dash-card .network { flex: 1; min-height: 0; overflow: auto; padding: 14px; justify-content: flex-start; }
-.dash-card #alerts-list { flex: 1; min-height: 0; overflow: auto; }
+.dash-card .network { flex: 1; min-height: 0; overflow: hidden; padding: 14px; }
+.dash-card .topo-inner { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; }
+.dash-card .node { padding: 8px 14px; font-size: 12.5px; }
+.dash-card .branches { flex-wrap: nowrap; }
+.dash-card .branch { flex: 0 1 auto; }
+.dash-card #alerts-list { overflow: hidden; }
+.dash-card .alert-item { padding: 10px 0; }
+.dash-card .alert-time { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dash-card #alerts-list { flex: 1; min-height: 0; }
 
 .branches { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; align-items: flex-start; width: 100%; }
 .branch { border: 1px dashed var(--border); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
@@ -758,6 +769,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
         if (realOpt) realOpt.textContent = I18N.t("netReal");
 
         try { window.localStorage.setItem("netmind-net-mode", mode); } catch (e) {}
+        renderChatIntro();
         Dashboard.refresh();
     }
 
@@ -840,6 +852,13 @@ body[data-net-mode="real"] .sim-only { display: none; }
             noAlerts: "No alerts.",
             noDevicesReal: "No real network scan results yet.",
             noDevicesSim: "No devices found in registry.json.",
+            welcomeSubReal: "Ask about the devices on your real network — see who is connected, look up an IP, or check whether something is online.",
+            examplesReal: [
+                "Which devices are on my network right now?",
+                "How many devices are connected?",
+                "Is 192.168.1.1 online?",
+                "What's the IP address of my phone?"
+            ],
             examples: [
                 "What's Khalid's IP address?",
                 "List all devices",
@@ -913,6 +932,13 @@ body[data-net-mode="real"] .sim-only { display: none; }
             noAlerts: "لا توجد تنبيهات.",
             noDevicesReal: "لا توجد نتائج فحص للشبكة الحقيقية بعد.",
             noDevicesSim: "لا توجد أجهزة في registry.json.",
+            welcomeSubReal: "اسأل عن الأجهزة في شبكتك الحقيقية — اعرف من المتصل، أو ابحث عن عنوان IP، أو تحقق إن كان جهاز ما متصلاً.",
+            examplesReal: [
+                "وش الأجهزة الموجودة بشبكتي الحين؟",
+                "كم جهاز متصل بالشبكة؟",
+                "هل 192.168.1.1 متصل؟",
+                "وش عنوان IP لجوالي؟"
+            ],
             examples: [
                 "وش عنوان IP لخالد؟",
                 "اعرض كل الأجهزة",
@@ -928,6 +954,21 @@ body[data-net-mode="real"] .sim-only { display: none; }
         t: function (key) { return STRINGS[lang][key]; }
     };
 
+    // Suggestions and welcome line depend on the mode: the real network can only be looked at, not controlled.
+    function renderChatIntro() {
+        var s = STRINGS[lang], real = netMode === "real";
+        if (!examplesEl) return;
+        document.getElementById("welcomeSub").textContent = real ? s.welcomeSubReal : s.welcomeSub;
+        examplesEl.innerHTML = "";
+        (real ? s.examplesReal : s.examples).forEach(function (text) {
+            var div = document.createElement("div");
+            div.className = "example";
+            div.textContent = text;
+            div.addEventListener("click", function () { inputBox.value = text; Chat.send(); });
+            examplesEl.appendChild(div);
+        });
+    }
+
     function applyLang() {
         var s = STRINGS[lang];
         document.documentElement.lang = lang;
@@ -940,18 +981,10 @@ body[data-net-mode="real"] .sim-only { display: none; }
         });
 
         document.getElementById("welcomeTitle").textContent = s.welcomeTitle;
-        document.getElementById("welcomeSub").textContent = s.welcomeSub;
         document.getElementById("inputBox").placeholder = s.placeholder;
         document.getElementById("sendBtn").textContent = s.send;
 
-        examplesEl.innerHTML = "";
-        s.examples.forEach(function (text) {
-            var div = document.createElement("div");
-            div.className = "example";
-            div.textContent = text;
-            div.addEventListener("click", function () { inputBox.value = text; Chat.send(); });
-            examplesEl.appendChild(div);
-        });
+        renderChatIntro();
 
         updatePageHeader();
         applyNetMode(netMode); // refresh mode label + table header text in new language
@@ -998,6 +1031,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
         });
 
         updatePageHeader();
+        if (view === "dashboard") { Dashboard.renderTopology(); Dashboard.renderAlerts(); }
 
         if (view === "reports") {
             Reports.load();
@@ -1224,6 +1258,17 @@ body[data-net-mode="real"] .sim-only { display: none; }
             var x = alertText(a);
             notify(x.title + " — " + x.detail, a.kind !== "device_online");
         });
+    }
+
+    // Shrinks `inner` until it fits `box` with no scrolling in either direction.
+    function fitToBox(box, inner) {
+        inner.style.zoom = 1;
+        if (!box.clientHeight) return;   // view is hidden right now
+        var z = 1;
+        while ((box.scrollHeight > box.clientHeight + 1 || box.scrollWidth > box.clientWidth + 1) && z > 0.45) {
+            z -= 0.05;
+            inner.style.zoom = z.toFixed(2);
+        }
     }
 
     function activeAlerts() { return dashState.alerts.filter(function (a) { return a.active !== false; }); }
@@ -1521,6 +1566,9 @@ body[data-net-mode="real"] .sim-only { display: none; }
                 container.innerHTML = '<div class="empty-note">' + STRINGS[lang].noDevicesSim + "</div>";
                 return;
             }
+            var inner = document.createElement("div");
+            inner.className = "topo-inner";
+            container.appendChild(inner);
             var router = dashState.devices.find(function (d) { return d.type === "router"; });
             var rest = dashState.devices.filter(function (d) { return d.type !== "router"; });
 
@@ -1533,10 +1581,10 @@ body[data-net-mode="real"] .sim-only { display: none; }
                 return el;
             }
             if (router) {
-                container.appendChild(nodeEl(router));
+                inner.appendChild(nodeEl(router));
                 var conn = document.createElement("div");
                 conn.className = "connection";
-                container.appendChild(conn);
+                inner.appendChild(conn);
             }
 
             // One box per branch: its firewall first, then the hosts and cameras behind it.
@@ -1570,7 +1618,8 @@ body[data-net-mode="real"] .sim-only { display: none; }
                 if (others.length) box.appendChild(nodes);
                 wrap.appendChild(box);
             });
-            container.appendChild(wrap);
+            inner.appendChild(wrap);
+            fitToBox(container, inner);
         },
 
         renderAlerts: function () {
@@ -1581,7 +1630,11 @@ body[data-net-mode="real"] .sim-only { display: none; }
                 list.innerHTML = '<div class="empty-note">' + (netMode === "real" ? STRINGS[lang].noAlertsReal : STRINGS[lang].noAlertsSim) + "</div>";
                 return;
             }
-            dashState.alerts.slice(0, 3).forEach(function (a) { list.insertAdjacentHTML("beforeend", alertItemHtml(a, false)); });
+            dashState.alerts.slice(0, 8).forEach(function (a) { list.insertAdjacentHTML("beforeend", alertItemHtml(a, false)); });
+            // Show as many recent alerts as fit in the card; the rest are on the Alerts page.
+            while (list.clientHeight && list.scrollHeight > list.clientHeight + 1 && list.children.length > 1) {
+                list.removeChild(list.lastChild);
+            }
         },
 
         renderAlertsView: function () {
@@ -1933,6 +1986,14 @@ body[data-net-mode="real"] .sim-only { display: none; }
                 console.error("NetMind: power action failed", err);
                 notify("Power " + action + " failed: " + (err.message || err), true);
             }).then(release);
+        });
+
+        var resizeTimer = null;
+        window.addEventListener("resize", function () {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(function () {
+                if (currentView === "dashboard") { Dashboard.renderTopology(); Dashboard.renderAlerts(); }
+            }, 150);
         });
 
         document.getElementById("view-all-alerts").addEventListener("click", function () { showView("alerts"); });
