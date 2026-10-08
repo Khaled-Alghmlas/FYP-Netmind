@@ -2,12 +2,12 @@
 """Core device control functions for the NetMind agent.
 Resolves device/owner names via registry.json, then checks or changes
 container state via the Docker SDK — this IS the on/off state we care about."""
+import difflib
 import json
 import re
 import shlex
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 import docker
 import requests
 from pathlib import Path
@@ -38,7 +38,51 @@ def find_devices(name_or_owner):
     exact = [d for d in devices if d["id"].lower() == needle]
     if exact:
         return exact
-    return [d for d in devices if (d["owner"] or "").lower() == needle]
+    by_owner = [d for d in devices if (d["owner"] or "").lower() == needle]
+    if by_owner:
+        return by_owner
+    return _fuzzy_match(devices, needle)
+
+
+_PREFIXES = ("host-", "cam-", "fw-")
+FUZZY_MIN_SCORE = 0.8     # how alike two names must be to count as the same name
+FUZZY_MIN_MARGIN = 0.08   # and how much better than the runner-up, or we don't guess
+
+
+def _bare(name):
+    for prefix in _PREFIXES:
+        if name.startswith(prefix):
+            return name[len(prefix):]
+    return name
+
+
+def _fuzzy_match(devices, needle):
+    """Forgiving lookup for typos and spelling variants ('host-khaled' -> host-khalid).
+    Returns [] unless one name is clearly the closest, so an ambiguous guess never
+    picks a device. Destructive actions still show the resolved device ids on the
+    confirmation prompt."""
+    if len(_bare(needle)) < 3:
+        return []
+    def score(name):
+        return max(difflib.SequenceMatcher(None, needle, name).ratio(),
+                   difflib.SequenceMatcher(None, _bare(needle), _bare(name)).ratio())
+
+    groups = {}  # a person's devices share one entry; ownerless devices stand alone
+    for d in devices:
+        key = (d["owner"] or d["id"]).lower()
+        names = {d["id"].lower(), (d["owner"] or "").lower()} - {""}
+        best, members = groups.get(key, (0.0, []))
+        groups[key] = (max([best] + [score(n) for n in names]), members + [d])
+    ranked = sorted(groups.values(), key=lambda g: -g[0])
+    if not ranked or ranked[0][0] < FUZZY_MIN_SCORE:
+        return []
+    if len(ranked) > 1 and ranked[0][0] - ranked[1][0] < FUZZY_MIN_MARGIN:
+        return []
+    prefix = next((x for x in _PREFIXES if needle.startswith(x)), None)
+    members = ranked[0][1]
+    if prefix:  # "host-khaled" means the host, not the same person's camera
+        members = [d for d in members if d["id"].lower().startswith(prefix)]
+    return members
 
 def list_devices_on_segment(segment_id):
     """List every device attached to a given switch/hub segment (e.g.
@@ -313,35 +357,17 @@ def list_devices():
         results.append({"id": d["id"], "owner": d["owner"], "type": d["type"], "status": state})
     return results
 
-def _container_cpu_percent(container):
-    """Best-effort single-sample CPU % via the Docker stats API. Returns None on
-    failure (e.g. container just started and has no precpu sample yet)."""
-    try:
-        stats = container.stats(stream=False)
-        cpu_delta = (stats["cpu_stats"]["cpu_usage"]["total_usage"]
-                     - stats["precpu_stats"]["cpu_usage"]["total_usage"])
-        system_delta = (stats["cpu_stats"]["system_cpu_usage"]
-                         - stats["precpu_stats"]["system_cpu_usage"])
-        online_cpus = stats["cpu_stats"].get("online_cpus") or len(
-            stats["cpu_stats"]["cpu_usage"].get("percpu_usage", [1])
-        )
-        if system_delta > 0 and cpu_delta >= 0:
-            return (cpu_delta / system_delta) * online_cpus * 100.0
-    except Exception:
-        pass
-    return None
-
-
-# The dashboard polls every few seconds. Asking Docker for CPU stats one container
-# at a time made every poll take 15+ seconds and starved every other request
-# (power, confirm, chat tools). So: fetch the container list once, read CPU stats
-# in parallel, and share one short-lived cached result between callers.
+# The dashboard polls every few seconds, so it fetches the container list once and
+# shares one short-lived cached result between callers.
 DASHBOARD_TTL = 3.0
-_dash_cache = {"ts": 0.0, "data": None}
+_dash_cache = {"ts": 0.0, "data": None, "gen": 0}
 _dash_lock = threading.Lock()
 
 
 def _invalidate_dashboard_cache():
+    # Bump the generation too: a computation that started before this call must not
+    # store its (now stale) result as fresh when it finishes.
+    _dash_cache["gen"] += 1
     _dash_cache["ts"] = 0.0
 
 
@@ -351,41 +377,31 @@ def _compute_dashboard():
         containers = {c.name: c for c in _client.containers.list(all=True)}
     except docker.errors.DockerException:
         containers = {}
-    running = [d for d in devices
-               if d["container"] in containers and containers[d["container"]].status == "running"]
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        cpu_values = list(pool.map(lambda d: _container_cpu_percent(containers[d["container"]]), running))
-    cpu_by_id = {d["id"]: v for d, v in zip(running, cpu_values)}
-
     results = []
     for d in devices:
         c = containers.get(d["container"])
-        if c is not None and c.status == "running":
-            cpu = cpu_by_id.get(d["id"])
-            cpu = round(cpu) if cpu is not None else 0
-            status = "warning" if cpu >= 80 else "online"
-        else:
-            cpu = 0
-            status = "offline"
         results.append({
             "id": d["id"],
             "name": d["id"],
             "type": d["type"],
             "ip": d.get("ip", ""),
-            "status": status,
-            "cpu": cpu,
-            "traffic": 0,
+            "status": "online" if c is not None and c.status == "running" else "offline",
         })
     return results
 
 
 def list_devices_dashboard():
-    """Device list shaped for the web Dashboard (id, name, type, ip, status, cpu).
+    """Device list shaped for the web Dashboard (id, name, type, ip, status).
     Cached for DASHBOARD_TTL seconds; concurrent callers share one computation."""
     with _dash_lock:
         if _dash_cache["data"] is None or time.monotonic() - _dash_cache["ts"] >= DASHBOARD_TTL:
-            _dash_cache["data"] = _compute_dashboard()
-            _dash_cache["ts"] = time.monotonic()
+            gen = _dash_cache["gen"]
+            data = _compute_dashboard()
+            _dash_cache["data"] = data
+            # If a power change invalidated the cache while we were computing, this
+            # snapshot may predate it: serve it once, but do not keep it as fresh.
+            _dash_cache["ts"] = time.monotonic() if gen == _dash_cache["gen"] else 0.0
+            return [dict(d) for d in data]
         return [dict(d) for d in _dash_cache["data"]]
 
 
@@ -402,19 +418,9 @@ def _cached_audit(fw_id, ttl=10.0):
     return result
 
 
-def get_alerts():
-    """Derives live alerts from device status plus real firewall-audit findings."""
-    alerts = []
-    now = int(time.time() * 1000)
-
-    for d in list_devices_dashboard():
-        if d["status"] == "offline":
-            alerts.append({"id": f"offline-{d['id']}", "title": "Device Offline",
-                            "detail": d["id"], "ts": now, "level": "offline"})
-        elif d["status"] == "warning":
-            alerts.append({"id": f"cpu-{d['id']}", "title": "High CPU Usage",
-                            "detail": f"{d['id']} ({d['cpu']}%)", "ts": now, "level": "warning"})
-
+def get_firewall_findings():
+    """Current firewall-audit findings as (firewall_id, finding_text) pairs."""
+    found = []
     for d in _load_registry():
         if d["type"] != "firewall":
             continue
@@ -423,15 +429,8 @@ def get_alerts():
         except Exception:
             continue
         for finding in audit["findings"]:
-            alerts.append({
-                "id": f"fw-{d['id']}-{abs(hash(finding)) % 10000}",
-                "title": "Firewall Finding",
-                "detail": finding,
-                "ts": now,
-                "level": "warning",
-            })
-
-    return alerts
+            found.append((d["id"], finding))
+    return found
 
 
 if __name__ == "__main__":
