@@ -106,9 +106,13 @@ html[dir="rtl"] body { font-family: 'IBM Plex Sans Arabic', 'IBM Plex Sans', san
     flex-direction: column;
 }
 
-.logo { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; padding: 0 10px; }
+.logo {
+    font-size: 19px; font-weight: 600; letter-spacing: -0.02em;
+    /* a band exactly as tall as the topbar, with the brand centred in it both ways */
+    height: 72px; margin: -24px -16px 0; display: flex; align-items: center; justify-content: center;
+    border-bottom: 1px solid var(--border);
+}
 .logo { direction: ltr; unicode-bidi: isolate; }  /* brand name stays "Netmind" in Arabic */
-html[dir="rtl"] .logo { text-align: right; }
 .logo .logo-net { display: inline-block; }
 .logo .logo-mind { color: var(--accent); }
 
@@ -117,7 +121,7 @@ html[dir="rtl"] .logo { text-align: right; }
 
 .section-title {
     font-size: 11px; color: var(--muted); text-transform: uppercase;
-    margin: 32px 10px 10px; letter-spacing: 0.06em;
+    margin: 24px 10px 10px; letter-spacing: 0.06em;
 }
 
 .nav-link {
@@ -188,6 +192,16 @@ html[dir="rtl"] .logo { text-align: right; }
 
 .content { padding: 28px; }
 
+/* Dashboard is a single fixed-height page: nothing to scroll, cards share the height. */
+body.no-scroll { height: 100vh; overflow: hidden; }
+body.no-scroll .main { height: 100vh; min-height: 0; display: flex; flex-direction: column; }
+body.no-scroll .content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+body.no-scroll #dashboardView { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#dashboardView > .row.dash-main { flex: 1; min-height: 0; margin-bottom: 0 !important; }
+.dash-card { display: flex; flex-direction: column; min-height: 0; }
+.dash-card .network { flex: 1; min-height: 0; overflow: auto; }
+.dash-card #alerts-list { flex: 1; min-height: 0; overflow: auto; }
+
 /* ================= CARDS ================= */
 
 .card-custom { background: var(--input-bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: none; }
@@ -236,7 +250,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
 .alert-item:last-child { border-bottom: none; }
 .alert-title { font-size: 13px; font-weight: 500; }
 .alert-time { color: var(--muted); font-size: 11px; margin-top: 3px; }
-.dot { width: 7px; height: 7px; background: var(--accent); border-radius: 50%; display: inline-block; margin-right: 7px; }
+.dot { width: 7px; height: 7px; background: var(--accent); border-radius: 50%; display: inline-block; margin-inline-end: 7px; }
 .empty-note { color: var(--muted); font-size: 12px; padding: 10px 0; }
 
 /* ================= TABLE ================= */
@@ -462,16 +476,15 @@ body[data-net-mode="real"] .sim-only { display: none; }
                 </div>
             </div>
 
-            <div class="row g-4 mb-4">
+            <div class="row g-4 mb-4 dash-main">
 
                 <div class="col-lg-8">
-                    <div class="card-custom p-4">
+                    <div class="card-custom p-4 h-100 dash-card">
                         <div class="section-header">
                             <div>
                                 <h5 data-i18n="topologyTitle">Network Topology</h5>
                                 <p data-i18n="topologySub">Current infrastructure</p>
                             </div>
-                            <button class="btn-light-netmind" id="view-network-btn" data-i18n="refresh">Refresh</button>
                         </div>
 
                         <div class="network sim-only" id="topology-container">
@@ -498,7 +511,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
                 </div>
 
                 <div class="col-lg-4">
-                    <div class="card-custom p-4 h-100">
+                    <div class="card-custom p-4 h-100 dash-card">
                         <div class="section-header">
                             <div>
                                 <h5 data-i18n="alertsTitle">Recent Alerts</h5>
@@ -762,6 +775,9 @@ body[data-net-mode="real"] .sim-only { display: none; }
             error: "Something went wrong connecting to the server.",
             backendDown: "Could not reach the backend.",
             backendDownHint: "Could not reach the backend. Make sure web_server.py is running.",
+            sysOnline: "System Online", devsDown: "%n Device(s) Down",
+            healthGreat: "Excellent condition", healthOk: "Good condition", healthBad: "Needs attention",
+            onlineOffline: "%a online · %b offline",
             noAlertsSim: "No alerts — network is quiet.",
             noAlertsReal: "Real-network mode is read-only monitoring — no alerts.",
             noAlerts: "No alerts.",
@@ -815,6 +831,9 @@ body[data-net-mode="real"] .sim-only { display: none; }
             error: "صار خطأ بالاتصال بالسيرفر.",
             backendDown: "تعذّر الاتصال بالباك اند.",
             backendDownHint: "تعذّر الاتصال بالباك اند. تأكد أن web_server.py شغّال.",
+            sysOnline: "النظام يعمل", devsDown: "%n جهاز متوقف",
+            healthGreat: "حالة ممتازة", healthOk: "حالة جيدة", healthBad: "تحتاج إلى اهتمام",
+            onlineOffline: "%a متصل · %b غير متصل",
             noAlertsSim: "لا توجد تنبيهات — الشبكة هادئة.",
             noAlertsReal: "وضع الشبكة الحقيقية مراقبة فقط — بدون تنبيهات.",
             noAlerts: "لا توجد تنبيهات.",
@@ -886,6 +905,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
     function showView(view) {
         currentView = view;
+        document.body.classList.toggle("no-scroll", view === "dashboard");
 
         document.getElementById("dashboardView").style.display = view === "dashboard" ? "" : "none";
         document.getElementById("devicesView").style.display = view === "devices" ? "" : "none";
@@ -1339,18 +1359,18 @@ body[data-net-mode="real"] .sim-only { display: none; }
         renderStats: function () {
             var s = this.computeStats();
             document.getElementById("stat-devices").textContent = s.total;
-            document.getElementById("stat-devices-sub").textContent = s.online + " online · " + s.offline + " offline";
+            document.getElementById("stat-devices-sub").textContent = STRINGS[lang].onlineOffline.replace("%a", s.online).replace("%b", s.offline);
             document.getElementById("stat-health").textContent = s.total ? (s.health + "%") : "--";
-            document.getElementById("stat-health-sub").textContent = s.health >= 90 ? "Excellent condition" : (s.health >= 70 ? "Good condition" : "Needs attention");
+            document.getElementById("stat-health-sub").textContent = s.health >= 90 ? STRINGS[lang].healthGreat : (s.health >= 70 ? STRINGS[lang].healthOk : STRINGS[lang].healthBad);
             document.getElementById("stat-alerts").textContent = activeAlerts().length;
 
             var badge = document.getElementById("online-badge");
             if (!dashState.connected) return;
             if (s.offline > 0) {
-                badge.textContent = "● " + s.offline + " Device(s) Down";
+                badge.textContent = "● " + STRINGS[lang].devsDown.replace("%n", s.offline);
                 badge.classList.add("degraded");
             } else {
-                badge.textContent = "● System Online";
+                badge.textContent = "● " + STRINGS[lang].sysOnline;
                 badge.classList.remove("degraded");
             }
         },
@@ -1695,11 +1715,6 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
         document.getElementById("view-all-alerts").addEventListener("click", function () { showView("alerts"); });
 
-        var viewNetBtn = document.getElementById("view-network-btn");
-        if (viewNetBtn) viewNetBtn.addEventListener("click", function (e) {
-            e.preventDefault();
-            Dashboard.refresh();
-        });
     }
 
     /* =====================================================================

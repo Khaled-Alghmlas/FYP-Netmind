@@ -2,6 +2,7 @@
 """Core device control functions for the NetMind agent.
 Resolves device/owner names via registry.json, then checks or changes
 container state via the Docker SDK — this IS the on/off state we care about."""
+import difflib
 import json
 import re
 import shlex
@@ -37,7 +38,51 @@ def find_devices(name_or_owner):
     exact = [d for d in devices if d["id"].lower() == needle]
     if exact:
         return exact
-    return [d for d in devices if (d["owner"] or "").lower() == needle]
+    by_owner = [d for d in devices if (d["owner"] or "").lower() == needle]
+    if by_owner:
+        return by_owner
+    return _fuzzy_match(devices, needle)
+
+
+_PREFIXES = ("host-", "cam-", "fw-")
+FUZZY_MIN_SCORE = 0.8     # how alike two names must be to count as the same name
+FUZZY_MIN_MARGIN = 0.08   # and how much better than the runner-up, or we don't guess
+
+
+def _bare(name):
+    for prefix in _PREFIXES:
+        if name.startswith(prefix):
+            return name[len(prefix):]
+    return name
+
+
+def _fuzzy_match(devices, needle):
+    """Forgiving lookup for typos and spelling variants ('host-khaled' -> host-khalid).
+    Returns [] unless one name is clearly the closest, so an ambiguous guess never
+    picks a device. Destructive actions still show the resolved device ids on the
+    confirmation prompt."""
+    if len(_bare(needle)) < 3:
+        return []
+    def score(name):
+        return max(difflib.SequenceMatcher(None, needle, name).ratio(),
+                   difflib.SequenceMatcher(None, _bare(needle), _bare(name)).ratio())
+
+    groups = {}  # a person's devices share one entry; ownerless devices stand alone
+    for d in devices:
+        key = (d["owner"] or d["id"]).lower()
+        names = {d["id"].lower(), (d["owner"] or "").lower()} - {""}
+        best, members = groups.get(key, (0.0, []))
+        groups[key] = (max([best] + [score(n) for n in names]), members + [d])
+    ranked = sorted(groups.values(), key=lambda g: -g[0])
+    if not ranked or ranked[0][0] < FUZZY_MIN_SCORE:
+        return []
+    if len(ranked) > 1 and ranked[0][0] - ranked[1][0] < FUZZY_MIN_MARGIN:
+        return []
+    prefix = next((x for x in _PREFIXES if needle.startswith(x)), None)
+    members = ranked[0][1]
+    if prefix:  # "host-khaled" means the host, not the same person's camera
+        members = [d for d in members if d["id"].lower().startswith(prefix)]
+    return members
 
 def list_devices_on_segment(segment_id):
     """List every device attached to a given switch/hub segment (e.g.

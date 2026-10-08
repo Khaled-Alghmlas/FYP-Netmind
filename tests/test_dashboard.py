@@ -77,3 +77,21 @@ def test_invalidation_during_a_running_computation_is_not_lost(monkeypatch):
     monkeypatch.setattr(dc, "_compute_dashboard", real)
     states = {d["id"]: d["status"] for d in dc.list_devices_dashboard()}
     assert states["host-1"] == "offline"  # the next call recomputes instead of reusing it
+
+
+def test_find_devices_tolerates_typos_but_not_ambiguity(monkeypatch):
+    registry = [{"id": f"host-{o}", "type": "host", "owner": o, "container": f"c-{o}", "ip": "1.1.1.1"}
+                for o in ("khalid", "khalil", "ahmed", "noura")]
+    registry.append({"id": "cam-khalid", "type": "camera", "owner": "khalid", "container": "c-cam", "ip": "1.1.1.8"})
+    registry.append({"id": "fw-branch1", "type": "firewall", "owner": None, "container": "c-fw", "ip": "1.1.1.9"})
+    monkeypatch.setattr(dc, "_load_registry", lambda: registry)
+    def ids(q):
+        return [d["id"] for d in dc.find_devices(q)]
+
+    assert ids("host-khaled") == ["host-khalid"]      # the typo from the dashboard chat
+    assert ids("Khaled") == ["host-khalid", "cam-khalid"]   # a person's name means all their devices
+    assert ids("host-ahmad") == ["host-ahmed"]
+    assert ids("host-khalil") == ["host-khalil"]      # exact match is never second-guessed
+    assert ids("host-khal") == []                     # between khalid and khalil: don't guess
+    assert ids("fw-brnch1") == ["fw-branch1"]
+    assert ids("zzz") == [] and ids("ho") == []
