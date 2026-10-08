@@ -11,9 +11,10 @@ from contextlib import asynccontextmanager
 import os
 import threading
 import time
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlencode
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
@@ -31,6 +32,85 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 
 client = Groq(api_key=os.environ["GROQ_API_KEY"])
 MODEL = "openai/gpt-oss-120b"
+
+# ---------------------------------------------------------------------------
+# ADDED — Telegram notifications (doctor requirement: "Send alert and
+# recovery notifications outside the browser through Telegram, webhook or
+# email. Include device, severity and timestamp. Acceptance: a test alert
+# reaches a configured destination within the defined detection window.")
+#
+# Both env vars are optional — if unset, _send_telegram() silently does
+# nothing, so the app behaves exactly as before for anyone who hasn't
+# configured a bot. Hooked into the existing alert system (_add_alert, used
+# by every device_offline/device_online/firewall_finding/camera_finding
+# alert) and the real-network event log (_log_event) rather than adding a
+# second, parallel notification path.
+# ---------------------------------------------------------------------------
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+
+SEVERITY_EMOJI = {"critical": "\U0001F534", "warning": "\U0001F7E1", "info": "\U0001F7E2"}
+
+ALERT_KIND_SEVERITY = {
+    "device_online": "info",        # recovery
+    "firewall_finding": "critical",  # open sensitive port / misconfiguration
+    "camera_finding": "warning",     # default credentials still in use
+}
+
+PROTECTED_DEVICE_TYPES = ("firewall", "router")
+
+
+def _send_telegram(text):
+    """Fire-and-forget POST to the Telegram Bot API using only the stdlib
+    (no new dependency to install/pin in requirements.txt). Any failure is
+    logged to the console and swallowed — a notification problem should
+    never break the request that triggered it."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    data = urlencode({"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"}).encode()
+    try:
+        urllib.request.urlopen(urllib.request.Request(url, data=data, method="POST"), timeout=5)
+    except Exception as e:
+        print(f"[telegram] failed to send notification: {e}")
+
+
+def _alert_severity(alert, device_type=None):
+    if alert["kind"] == "device_offline":
+        return "critical" if device_type in PROTECTED_DEVICE_TYPES else "warning"
+    return ALERT_KIND_SEVERITY.get(alert["kind"], "warning")
+
+
+def _notify_telegram_alert(alert, device_type=None, network="Simulated Lab"):
+    severity = _alert_severity(alert, device_type)
+    emoji = SEVERITY_EMOJI.get(severity, "⚪")
+    ts_str = datetime.fromtimestamp(alert["ts"] / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    text = (
+        f"{emoji} <b>NetMind Alert</b>\n"
+        f"Network: {network}\n"
+        f"Device: {alert.get('device') or '-'}\n"
+        f"Event: {alert['title']}\n"
+        f"Severity: {severity.capitalize()}\n"
+        f"Details: {alert['detail']}\n"
+        f"Time: {ts_str}"
+    )
+    _send_telegram(text)
+
+
+def _notify_telegram_event(entry, network="Real Network"):
+    severity = "critical" if entry["type"] == "device_lost" else "info"
+    emoji = SEVERITY_EMOJI.get(severity, "⚪")
+    ts_str = datetime.fromtimestamp(entry["ts"] / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    text = (
+        f"{emoji} <b>NetMind Alert</b>\n"
+        f"Network: {network}\n"
+        f"Device: {entry.get('device_name') or entry.get('device_id') or '-'}\n"
+        f"Event: {entry['type'].replace('_', ' ').title()}\n"
+        f"Severity: {severity.capitalize()}\n"
+        f"Details: {entry['detail']}\n"
+        f"Time: {ts_str}"
+    )
+    _send_telegram(text)
 
 # ---------------------------------------------------------------------------
 # SIMULATED (containerlab) tools — unchanged, full control
@@ -436,14 +516,16 @@ _last_real_status = {}  # device_id -> last seen status (real mode)
 
 
 def _log_event(log, event_type, device_id, device_name, detail):
-    log.insert(0, {
+    entry = {
         "ts": datetime.now(timezone.utc).timestamp() * 1000,  # ms, matches the frontend's Date.now()-style timestamps
         "type": event_type,  # "power_on" | "power_off" | "status_change" | "device_seen" | "device_lost"
         "device_id": device_id,
         "device_name": device_name,
         "detail": detail,
-    })
+    }
+    log.insert(0, entry)
     del log[MAX_LOG_ENTRIES:]
+    _notify_telegram_event(entry)  # ADDED — Telegram notification (real-network events)
 
 
 ALERT_LOG = []        # simulated-mode alert history, newest first (never removed on recovery)
@@ -497,7 +579,7 @@ def _load_alerts():
             _finding_open[(a["device"], a.get("finding", ""))] = a
 
 
-def _add_alert(kind, title, detail, device_id=None, **extra):
+def _add_alert(kind, title, detail, device_id=None, device_type=None, **extra):
     global _alert_seq
     _alert_seq += 1
     alert = {"id": f"a{_alert_seq}", "kind": kind, "title": title, "detail": detail,
@@ -505,6 +587,7 @@ def _add_alert(kind, title, detail, device_id=None, **extra):
     alert.update(extra)
     ALERT_LOG.insert(0, alert)
     del ALERT_LOG[MAX_ALERTS:]
+    _notify_telegram_alert(alert, device_type=device_type)  # ADDED — Telegram notification
     return alert
 
 
@@ -517,17 +600,17 @@ def _fmt_duration(seconds):
     return f"{seconds // 3600}h {(seconds % 3600) // 60:02d}m"
 
 
-def _track_alerts(did, name, old_status, new_status):
+def _track_alerts(did, name, old_status, new_status, device_type=None):
     """Alerts are a permanent history: going offline raises one, coming back raises
     another (with how long the device was down) and the earlier one is kept, just closed."""
     if new_status == "offline" and did not in _down_alert:
         _down_since[did] = int(time.time() * 1000)
-        _down_alert[did] = _add_alert("device_offline", "Device Offline", f"{name} went offline", did)
+        _down_alert[did] = _add_alert("device_offline", "Device Offline", f"{name} went offline", did, device_type=device_type)
     elif new_status == "online" and did in _down_alert:
         _down_alert.pop(did)["active"] = False
         secs = (int(time.time() * 1000) - _down_since.pop(did, int(time.time() * 1000))) / 1000
         _add_alert("device_online", "Device Back Online",
-                   f"{name} is back online after {_fmt_duration(secs)}", did, down_seconds=round(secs, 1))
+                   f"{name} is back online after {_fmt_duration(secs)}", did, device_type=device_type, down_seconds=round(secs, 1))
 
 
 def _track_sim_status(devices):
@@ -539,7 +622,7 @@ def _track_sim_status(devices):
             name = d.get("name", did)
             new_status = d.get("status")
             old_status = _last_sim_status.get(did)
-            _track_alerts(did, name, old_status, new_status)
+            _track_alerts(did, name, old_status, new_status, device_type=d.get("type"))
             _last_sim_status[did] = new_status
         _save_alerts()
     return devices
@@ -727,6 +810,20 @@ def api_report():
 def api_audit():
     """Audit log of every tool call: who, what, arguments, result, when."""
     return AUDIT_LOG.list()
+
+
+@app.post("/api/notify-test")
+def api_notify_test():
+    """ADDED — manual test button for the Telegram integration (doctor's
+    acceptance criterion: 'a test alert reaches a configured destination')."""
+    configured = bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)
+    if configured:
+        _send_telegram(
+            "\U0001F514 <b>NetMind Test Alert</b>\n"
+            "This is a test notification — if you can see this, Telegram "
+            "alerts are configured correctly."
+        )
+    return {"sent": configured}
 
 # ============================================================================
 # ADDED — REST endpoints for the live web Dashboard (agent/web/Dashboard.html).

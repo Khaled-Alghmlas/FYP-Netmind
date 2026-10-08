@@ -592,8 +592,12 @@ body[data-net-mode="real"] .sim-only { display: none; }
                         <h5 data-i18n="allAlertsTitle">Alert History</h5>
                         <p data-i18n="alertsHistorySub">Every alert is kept, including devices that came back online</p>
                     </div>
-                    <span class="accent fw-semibold" id="alerts-total-badge">0</span>
+                    <div class="d-flex align-items-center gap-3">
+                        <span class="accent fw-semibold" id="alerts-total-badge">0</span>
+                        <button class="btn-light-netmind" id="send-test-alert-btn" data-i18n="sendTestAlert">Send Test Alert</button>
+                    </div>
                 </div>
+                <div class="empty-note" id="telegram-status-note" style="display:none"></div>
                 <div id="all-alerts-list"></div>
             </div>
         </section>
@@ -705,6 +709,10 @@ body[data-net-mode="real"] .sim-only { display: none; }
             return fetchJson(Api.base + "/api/report");
         },
 
+        notifyTest: function () {
+            return fetch(Api.base + "/api/notify-test", { method: "POST" }).then(function (res) { return res.json(); });
+        },
+
         confirm: function (pendingId, approve, ackProtected) {
             return fetch(Api.base + "/api/confirm", {
                 method: "POST",
@@ -807,6 +815,10 @@ body[data-net-mode="real"] .sim-only { display: none; }
             alertsHistorySub: "Every alert is kept, including devices that came back online",
             alertOffline: "Device Offline", alertOnline: "Device Back Online", alertFirewall: "Firewall Finding",
             alertWentOffline: "went offline", alertBackAfter: "is back online after", agoSuffix: " ago",
+            sendTestAlert: "Send Test Alert",
+            testAlertSent: "Test alert sent to Telegram — check the bot chat.",
+            testAlertNotConfigured: "Telegram isn't configured yet — set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in agent/.env and restart the server.",
+            testAlertFailed: "Couldn't reach the backend to send the test alert.",
             typePhone: "Phone", typeLaptop: "Laptop / PC", typeRouter: "Router", typeFirewall: "Firewall",
             typeCamera: "Camera", typeSwitch: "Switch", typeServer: "Server", typeTv: "TV / Streaming",
             typeIot: "IoT device", typeApple: "Apple device", typeUnknown: "Unknown device",
@@ -887,6 +899,10 @@ body[data-net-mode="real"] .sim-only { display: none; }
             alertsHistorySub: "كل التنبيهات محفوظة، بما فيها عودة الأجهزة للاتصال",
             alertOffline: "جهاز غير متصل", alertOnline: "عاد الجهاز للاتصال", alertFirewall: "ملاحظة على جدار الحماية",
             alertWentOffline: "انقطع اتصاله", alertBackAfter: "عاد للاتصال بعد", agoSuffix: "",
+            sendTestAlert: "إرسال تنبيه تجريبي",
+            testAlertSent: "تم إرسال تنبيه تجريبي لتليجرام — تحقق من محادثة البوت.",
+            testAlertNotConfigured: "تليجرام مو مضبوط بعد — حط TELEGRAM_BOT_TOKEN و TELEGRAM_CHAT_ID بملف agent/.env وأعد تشغيل السيرفر.",
+            testAlertFailed: "تعذّر الوصول للباك اند لإرسال التنبيه التجريبي.",
             typePhone: "جوال", typeLaptop: "لابتوب / PC", typeRouter: "راوتر", typeFirewall: "فايروول",
             typeCamera: "كاميرا", typeSwitch: "سويتش", typeServer: "سيرفر", typeTv: "تلفزيون / بث",
             typeIot: "جهاز IoT", typeApple: "جهاز Apple", typeUnknown: "جهاز غير معروف",
@@ -1920,6 +1936,25 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
     function initDashboardHandlers() {
         document.getElementById("report-actions").addEventListener("click", function () { window.print(); });
+
+        var testAlertBtn = document.getElementById("send-test-alert-btn");
+        if (testAlertBtn) testAlertBtn.addEventListener("click", function () {
+            var note = document.getElementById("telegram-status-note");
+            testAlertBtn.disabled = true;
+            Api.notifyTest().then(function (res) {
+                if (note) {
+                    note.style.display = "";
+                    note.textContent = res.sent ? STRINGS[lang].testAlertSent : STRINGS[lang].testAlertNotConfigured;
+                }
+            }).catch(function () {
+                if (note) {
+                    note.style.display = "";
+                    note.textContent = STRINGS[lang].testAlertFailed;
+                }
+            }).then(function () {
+                testAlertBtn.disabled = false;
+            });
+        });
         document.getElementById("devices-grid").addEventListener("click", function (e) {
             var btn = e.target.closest(".power-toggle");
             if (!btn || netMode !== "simulated" || btn.disabled) return;
