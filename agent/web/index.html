@@ -107,7 +107,7 @@ html[dir="rtl"] body { font-family: 'IBM Plex Sans Arabic', 'IBM Plex Sans', san
 }
 
 .logo {
-    font-size: 19px; font-weight: 600; letter-spacing: -0.02em;
+    font-size: 25px; font-weight: 700; letter-spacing: -0.03em;
     /* a band exactly as tall as the topbar, with the brand centred in it both ways */
     height: 72px; margin: -24px -16px 0; display: flex; align-items: center; justify-content: center;
     border-bottom: 1px solid var(--border);
@@ -197,7 +197,8 @@ body.no-scroll { height: 100vh; overflow: hidden; }
 body.no-scroll .main { height: 100vh; min-height: 0; display: flex; flex-direction: column; }
 body.no-scroll .content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 body.no-scroll #dashboardView { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-#dashboardView > .row.dash-main { flex: 1; min-height: 0; margin-bottom: 0 !important; }
+/* g-4 would pull the row 24px past its slot (negative gutter margin) and push the cards onto the screen edge */
+#dashboardView > .row.dash-main { --bs-gutter-y: 0; flex: 1; min-height: 0; margin-bottom: 0 !important; }
 .dash-card { display: flex; flex-direction: column; min-height: 0; }
 .dash-card .network { flex: 1; min-height: 0; overflow: auto; }
 .dash-card #alerts-list { flex: 1; min-height: 0; overflow: auto; }
