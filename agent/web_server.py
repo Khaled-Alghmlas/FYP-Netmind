@@ -7,6 +7,8 @@ Supports two modes:
             just a guest on a real network, not its administrator)
 """
 import os
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -442,24 +444,80 @@ def _log_event(log, event_type, device_id, device_name, detail):
     del log[MAX_LOG_ENTRIES:]
 
 
+ALERT_LOG = []        # simulated-mode alert history, newest first (never removed on recovery)
+MAX_ALERTS = 500
+_alert_lock = threading.Lock()
+_alert_seq = 0
+_down_alert = {}      # device_id -> its still-open "offline" alert
+_down_since = {}      # device_id -> ms timestamp it was first seen offline
+_fw_open = {}         # (firewall_id, finding) -> its still-open finding alert
+
+
+def _add_alert(kind, title, detail, device_id=None, **extra):
+    global _alert_seq
+    _alert_seq += 1
+    alert = {"id": f"a{_alert_seq}", "kind": kind, "title": title, "detail": detail,
+             "device": device_id, "ts": int(time.time() * 1000), "active": kind != "device_online"}
+    alert.update(extra)
+    ALERT_LOG.insert(0, alert)
+    del ALERT_LOG[MAX_ALERTS:]
+    return alert
+
+
+def _fmt_duration(seconds):
+    seconds = int(round(seconds))
+    if seconds < 60:
+        return f"{seconds}s"
+    if seconds < 3600:
+        return f"{seconds // 60}m {seconds % 60:02d}s"
+    return f"{seconds // 3600}h {(seconds % 3600) // 60:02d}m"
+
+
+def _track_alerts(did, name, old_status, new_status):
+    """Alerts are a permanent history: going offline raises one, coming back raises
+    another (with how long the device was down) and the earlier one is kept, just closed."""
+    if new_status == "offline" and did not in _down_alert:
+        _down_since[did] = int(time.time() * 1000)
+        _down_alert[did] = _add_alert("device_offline", "Device Offline", f"{name} went offline", did)
+    elif new_status == "online" and did in _down_alert:
+        _down_alert.pop(did)["active"] = False
+        secs = (int(time.time() * 1000) - _down_since.pop(did, int(time.time() * 1000))) / 1000
+        _add_alert("device_online", "Device Back Online",
+                   f"{name} is back online after {_fmt_duration(secs)}", did, down_seconds=round(secs, 1))
+
+
 def _track_sim_status(devices):
     """Diffs the simulated-lab device list against what we last saw and logs
     any status transition. Called on every /api/devices request."""
-    for d in devices:
-        did = d.get("id")
-        name = d.get("name", did)
-        new_status = d.get("status")
-        old_status = _last_sim_status.get(did)
-        if old_status is not None and old_status != new_status:
-            if new_status == "online":
-                event_type = "power_on"
-            elif new_status == "offline":
-                event_type = "power_off"
-            else:
-                event_type = "status_change"
-            _log_event(EVENT_LOG, event_type, did, name, f"{name}: {old_status} → {new_status}")
-        _last_sim_status[did] = new_status
+    with _alert_lock:
+        for d in devices:
+            did = d.get("id")
+            name = d.get("name", did)
+            new_status = d.get("status")
+            old_status = _last_sim_status.get(did)
+            if old_status is not None and old_status != new_status:
+                if new_status == "online":
+                    event_type = "power_on"
+                elif new_status == "offline":
+                    event_type = "power_off"
+                else:
+                    event_type = "status_change"
+                _log_event(EVENT_LOG, event_type, did, name, f"{name}: {old_status} → {new_status}")
+            _track_alerts(did, name, old_status, new_status)
+            _last_sim_status[did] = new_status
     return devices
+
+
+def _track_firewall_findings():
+    current = set(dc.get_firewall_findings())
+    with _alert_lock:
+        for key in list(_fw_open):
+            if key not in current:
+                _fw_open.pop(key)["active"] = False
+        for fw_id, finding in sorted(current):
+            if (fw_id, finding) not in _fw_open:
+                _fw_open[(fw_id, finding)] = _add_alert(
+                    "firewall_finding", "Firewall Finding", f"{fw_id}: {finding}", fw_id)
 
 
 def _track_real_status(devices):
@@ -576,8 +634,11 @@ def api_devices():
 
 @app.get("/api/alerts")
 def api_alerts():
-    """Live alerts for the Dashboard (simulated lab)."""
-    return dc.get_alerts()
+    """Alert history for the Dashboard (simulated lab), newest first."""
+    _track_sim_status(dc.list_devices_dashboard())
+    _track_firewall_findings()
+    with _alert_lock:
+        return [dict(a) for a in ALERT_LOG]
 
 
 @app.get("/api/logs")
@@ -611,8 +672,6 @@ def api_real_devices():
             "ip": d.get("ip"),
             "mac": d.get("mac"),
             "status": d.get("status", "online"),
-            "cpu": 0,
-            "traffic": 0,
         }
         for d in items
     ]

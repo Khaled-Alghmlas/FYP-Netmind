@@ -7,7 +7,6 @@ import re
 import shlex
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 import docker
 import requests
 from pathlib import Path
@@ -313,29 +312,8 @@ def list_devices():
         results.append({"id": d["id"], "owner": d["owner"], "type": d["type"], "status": state})
     return results
 
-def _container_cpu_percent(container):
-    """Best-effort single-sample CPU % via the Docker stats API. Returns None on
-    failure (e.g. container just started and has no precpu sample yet)."""
-    try:
-        stats = container.stats(stream=False)
-        cpu_delta = (stats["cpu_stats"]["cpu_usage"]["total_usage"]
-                     - stats["precpu_stats"]["cpu_usage"]["total_usage"])
-        system_delta = (stats["cpu_stats"]["system_cpu_usage"]
-                         - stats["precpu_stats"]["system_cpu_usage"])
-        online_cpus = stats["cpu_stats"].get("online_cpus") or len(
-            stats["cpu_stats"]["cpu_usage"].get("percpu_usage", [1])
-        )
-        if system_delta > 0 and cpu_delta >= 0:
-            return (cpu_delta / system_delta) * online_cpus * 100.0
-    except Exception:
-        pass
-    return None
-
-
-# The dashboard polls every few seconds. Asking Docker for CPU stats one container
-# at a time made every poll take 15+ seconds and starved every other request
-# (power, confirm, chat tools). So: fetch the container list once, read CPU stats
-# in parallel, and share one short-lived cached result between callers.
+# The dashboard polls every few seconds, so it fetches the container list once and
+# shares one short-lived cached result between callers.
 DASHBOARD_TTL = 3.0
 _dash_cache = {"ts": 0.0, "data": None, "gen": 0}
 _dash_lock = threading.Lock()
@@ -354,36 +332,21 @@ def _compute_dashboard():
         containers = {c.name: c for c in _client.containers.list(all=True)}
     except docker.errors.DockerException:
         containers = {}
-    running = [d for d in devices
-               if d["container"] in containers and containers[d["container"]].status == "running"]
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        cpu_values = list(pool.map(lambda d: _container_cpu_percent(containers[d["container"]]), running))
-    cpu_by_id = {d["id"]: v for d, v in zip(running, cpu_values)}
-
     results = []
     for d in devices:
         c = containers.get(d["container"])
-        if c is not None and c.status == "running":
-            cpu = cpu_by_id.get(d["id"])
-            cpu = round(cpu) if cpu is not None else 0
-            status = "warning" if cpu >= 80 else "online"
-        else:
-            cpu = 0
-            status = "offline"
         results.append({
             "id": d["id"],
             "name": d["id"],
             "type": d["type"],
             "ip": d.get("ip", ""),
-            "status": status,
-            "cpu": cpu,
-            "traffic": 0,
+            "status": "online" if c is not None and c.status == "running" else "offline",
         })
     return results
 
 
 def list_devices_dashboard():
-    """Device list shaped for the web Dashboard (id, name, type, ip, status, cpu).
+    """Device list shaped for the web Dashboard (id, name, type, ip, status).
     Cached for DASHBOARD_TTL seconds; concurrent callers share one computation."""
     with _dash_lock:
         if _dash_cache["data"] is None or time.monotonic() - _dash_cache["ts"] >= DASHBOARD_TTL:
@@ -410,19 +373,9 @@ def _cached_audit(fw_id, ttl=10.0):
     return result
 
 
-def get_alerts():
-    """Derives live alerts from device status plus real firewall-audit findings."""
-    alerts = []
-    now = int(time.time() * 1000)
-
-    for d in list_devices_dashboard():
-        if d["status"] == "offline":
-            alerts.append({"id": f"offline-{d['id']}", "title": "Device Offline",
-                            "detail": d["id"], "ts": now, "level": "offline"})
-        elif d["status"] == "warning":
-            alerts.append({"id": f"cpu-{d['id']}", "title": "High CPU Usage",
-                            "detail": f"{d['id']} ({d['cpu']}%)", "ts": now, "level": "warning"})
-
+def get_firewall_findings():
+    """Current firewall-audit findings as (firewall_id, finding_text) pairs."""
+    found = []
     for d in _load_registry():
         if d["type"] != "firewall":
             continue
@@ -431,15 +384,8 @@ def get_alerts():
         except Exception:
             continue
         for finding in audit["findings"]:
-            alerts.append({
-                "id": f"fw-{d['id']}-{abs(hash(finding)) % 10000}",
-                "title": "Firewall Finding",
-                "detail": finding,
-                "ts": now,
-                "level": "warning",
-            })
-
-    return alerts
+            found.append((d["id"], finding))
+    return found
 
 
 if __name__ == "__main__":

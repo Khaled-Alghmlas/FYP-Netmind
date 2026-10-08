@@ -151,11 +151,6 @@ html[dir="rtl"] .logo { text-align: right; }
 }
 .online.degraded { color: var(--warning-text); background: var(--warning-bg); }
 
-.avatar {
-    width: 34px; height: 34px; border-radius: 50%; background: var(--panel);
-    border: 1px solid var(--border); display: flex; align-items: center;
-    justify-content: center; font-size: 13px; font-weight: 600;
-}
 
 /* shared pill-style toggle buttons (theme / net-mode) used in the topbar */
 .theme-toggle-btn, .mode-toggle-btn {
@@ -287,19 +282,24 @@ body[data-net-mode="real"] .sim-only { display: none; }
 .form-control, .form-select { background: var(--input-bg); border: 1px solid var(--border); font-size: 13px; }
 .form-control:focus, .form-select:focus { border-color: var(--accent); box-shadow: 0 0 0 .2rem rgba(201,100,66,.15); }
 
-.cpu-bar-track { background: var(--row-border); border-radius: 20px; height: 5px; width: 60px; overflow: hidden; display: inline-block; vertical-align: middle; margin-right: 6px; }
-.cpu-bar-fill { height: 100%; background: var(--accent); transition: width 0.4s; }
-
-/* ================= DEVICES GRID (Devices view) ================= */
-
-.devices-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin-top: 4px; }
-.device-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px; display: flex; gap: 12px; align-items: flex-start; }
+.devices-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin-top: 4px; }
+.device-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px; display: flex; gap: 12px; align-items: center; }
+.device-card.is-off { opacity: 0.6; }
+.device-card.is-off .device-icon { color: var(--muted); }
+.device-side { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; flex-shrink: 0; }
+.device-side .btn-light-netmind { padding: 4px 10px; font-size: 11.5px; }
+.alert-item.ok .dot { background: var(--success-text); }
+.alert-item.closed .alert-title { color: var(--muted); }
+.alert-when { color: var(--muted); font-size: 11px; margin-top: 3px; }
+#chat-clear { align-self: flex-end; margin: 10px 16px 0; background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 20px; padding: 4px 12px; font-size: 12px; font-family: inherit; cursor: pointer; }
+#chat-clear:hover { color: var(--text); background: var(--panel); }
 .device-icon { width: 38px; height: 38px; border-radius: 9px; background: var(--panel); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--accent); }
 .device-icon svg { width: 20px; height: 20px; }
 .device-info { min-width: 0; flex: 1; }
 .device-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .device-meta { font-size: 11.5px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .device-type-label { font-size: 10.5px; color: var(--accent); margin-top: 5px; font-weight: 500; }
+.device-card .status { padding: 3px 8px; font-size: 10.5px; }
 
 /* =========================================================================
    CHAT VIEW
@@ -390,9 +390,8 @@ body[data-net-mode="real"] .sim-only { display: none; }
     </nav>
 
     <nav class="sidebar-secondary">
-        <a href="#" class="nav-link disabled" data-i18n="navAlerts">Alerts</a>
+        <a href="#" class="nav-link nav-primary" data-view="alerts" id="navAlerts" data-i18n="navAlerts">Alerts</a>
         <a href="#" class="nav-link disabled" data-i18n="navReports">Reports</a>
-        <a href="#" class="nav-link" id="reset-demo" data-i18n="navRefresh">Refresh Now</a>
     </nav>
 
 </aside>
@@ -428,8 +427,6 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
             <span class="online" id="online-badge">● System Online</span>
 
-            <div class="avatar">A</div>
-
         </div>
 
     </header>
@@ -442,32 +439,25 @@ body[data-net-mode="real"] .sim-only { display: none; }
         <section id="dashboardView">
 
             <div class="row g-3 mb-4">
-                <div class="col-xl-3 col-md-6">
+                <div class="col-md-4">
                     <div class="card-custom stat-card">
                         <div class="stat-label" data-i18n="statDevices">Devices</div>
                         <div class="stat-value" id="stat-devices">--</div>
                         <div class="stat-small" id="stat-devices-sub">--</div>
                     </div>
                 </div>
-                <div class="col-xl-3 col-md-6">
+                <div class="col-md-4">
                     <div class="card-custom stat-card">
                         <div class="stat-label" data-i18n="statHealth">Network Health</div>
                         <div class="stat-value" id="stat-health">--</div>
                         <div class="stat-small" id="stat-health-sub">--</div>
                     </div>
                 </div>
-                <div class="col-xl-3 col-md-6">
+                <div class="col-md-4">
                     <div class="card-custom stat-card">
                         <div class="stat-label" data-i18n="statAlerts">Active Alerts</div>
                         <div class="stat-value accent" id="stat-alerts">--</div>
                         <div class="stat-small" data-i18n="statAlertsSub">Requires attention</div>
-                    </div>
-                </div>
-                <div class="col-xl-3 col-md-6">
-                    <div class="card-custom stat-card">
-                        <div class="stat-label" data-i18n="statTraffic">Network Traffic</div>
-                        <div class="stat-value" id="stat-traffic">--</div>
-                        <div class="stat-small" data-i18n="statTrafficSub">Current traffic</div>
                     </div>
                 </div>
             </div>
@@ -519,54 +509,43 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
                         <div id="alerts-list"></div>
 
-                        <button class="btn-netmind w-100 mt-3" data-bs-toggle="modal" data-bs-target="#allAlertsModal" data-i18n="viewAllAlerts">View All Alerts</button>
+                        <button class="btn-netmind w-100 mt-3" id="view-all-alerts" data-i18n="viewAllAlerts">View All Alerts</button>
                     </div>
                 </div>
 
-            </div>
-
-            <div class="card-custom p-4 mb-4">
-                <div class="section-header">
-                    <div>
-                        <h5 data-i18n="devicesTitle">Network Devices</h5>
-                        <p data-i18n="devicesSub">Connected infrastructure (from registry.json)</p>
-                    </div>
-                </div>
-
-                <div class="table-responsive">
-                    <table class="table align-middle">
-                        <thead>
-                            <tr id="devices-thead-row">
-                                <th data-i18n="colDevice">Device</th>
-                                <th data-i18n="colType">Type</th>
-                                <th data-i18n="colIp">IP Address</th>
-                                <th data-i18n="colStatus">Status</th>
-                                <th data-i18n="colCpu">CPU</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody id="devices-tbody"></tbody>
-                    </table>
-                </div>
             </div>
 
         </section>
 
         <!-- ============================================================
-             DEVICES VIEW — active devices with a best-effort type icon
-             (laptop/phone/router/...), guessed from hostname + MAC vendor.
+             DEVICES VIEW — every device as a card with a type icon; in the
+             simulated lab each card also has a power on/off button.
              ============================================================ -->
         <section id="devicesView" style="display:none">
             <div class="card-custom p-4">
                 <div class="section-header">
                     <div>
-                        <h5 data-i18n="activeDevicesTitle">Active Devices</h5>
-                        <p data-i18n="activeDevicesSub">Currently online — device type is a best-effort guess</p>
+                        <h5 data-i18n="activeDevicesTitle">Devices</h5>
                     </div>
                     <span class="accent fw-semibold" id="active-devices-count">0</span>
                 </div>
                 <div id="devices-grid" class="devices-grid"></div>
-                <div class="empty-note" id="devices-grid-note" data-i18n="deviceTypeNote">Device type is guessed from the hostname and MAC address vendor — it's a best-effort hint, not a certainty (phones with randomized MACs may be misclassified).</div>
+            </div>
+        </section>
+
+        <!-- ============================================================
+             ALERTS VIEW — full alert history, newest first
+             ============================================================ -->
+        <section id="alertsView" style="display:none">
+            <div class="card-custom p-4">
+                <div class="section-header">
+                    <div>
+                        <h5 data-i18n="allAlertsTitle">Alert History</h5>
+                        <p data-i18n="alertsHistorySub">Every alert is kept, including devices that came back online</p>
+                    </div>
+                    <span class="accent fw-semibold" id="alerts-total-badge">0</span>
+                </div>
+                <div id="all-alerts-list"></div>
             </div>
         </section>
 
@@ -605,6 +584,8 @@ body[data-net-mode="real"] .sim-only { display: none; }
         <section id="chatView" style="display:none">
             <div id="chatApp">
 
+                <button id="chat-clear" type="button" data-i18n="clearChat">Clear chat</button>
+
                 <div id="welcome">
                     <h1 id="welcomeTitle">Welcome to NetMind</h1>
                     <p id="welcomeSub">Ask about any device on the network — check status, look up an IP, or turn something on or off.</p>
@@ -624,20 +605,6 @@ body[data-net-mode="real"] .sim-only { display: none; }
     </div>
 
 </main>
-
-<!-- ================= ALL ALERTS MODAL ================= -->
-
-<div class="modal fade" id="allAlertsModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" data-i18n="allAlertsTitle">All Alerts</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body" id="all-alerts-list"></div>
-        </div>
-    </div>
-</div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
@@ -737,15 +704,6 @@ body[data-net-mode="real"] .sim-only { display: none; }
         if (simOpt) simOpt.textContent = I18N.t("netSimulated");
         if (realOpt) realOpt.textContent = I18N.t("netReal");
 
-        var row = document.getElementById("devices-thead-row");
-        if (row) {
-            if (mode === "real") {
-                row.innerHTML = "<th>" + I18N.t("colHostname") + "</th><th>" + I18N.t("colIp") + "</th><th>" + I18N.t("colMac") + "</th><th>" + I18N.t("colStatus") + "</th><th></th><th></th>";
-            } else {
-                row.innerHTML = "<th>" + I18N.t("colDevice") + "</th><th>" + I18N.t("colType") + "</th><th>" + I18N.t("colIp") + "</th><th>" + I18N.t("colStatus") + "</th><th>" + I18N.t("colCpu") + "</th><th></th>";
-            }
-        }
-
         try { window.localStorage.setItem("netmind-net-mode", mode); } catch (e) {}
         Dashboard.refresh();
     }
@@ -768,31 +726,34 @@ body[data-net-mode="real"] .sim-only { display: none; }
             navOverview: "Overview", navDashboard: "Dashboard", navChat: "AI Chat",
             navDevices: "Devices", navAlerts: "Alerts", navLogs: "Logs",
             navIntelligence: "Intelligence", navAiAssistant: "AI Assistant",
-            navReports: "Reports", navRefresh: "Refresh Now",
+            navReports: "Reports",
             dashboardTitle: "Network Dashboard", dashboardSub: "Real-time network overview",
             chatTitle: "AI Assistant", chatSub: "Ask about any device on the network",
-            devicesPageTitle: "Active Devices", devicesPageSub: "Currently online devices",
+            devicesPageTitle: "Devices", devicesPageSub: "Power devices on or off",
+            alertsPageTitle: "Alerts", alertsPageSub: "Full alert history",
             logsPageTitle: "Device Log", logsPageSub: "Power and connectivity history",
             logsTitle: "Device Log", logsSub: "Power and connectivity history for this session",
             colTime: "Time", colEvent: "Event", colDetails: "Details",
             noLogs: "No events logged yet — power a device on/off to see it here.",
             evtPowerOn: "Powered On", evtPowerOff: "Powered Off", evtStatusChange: "Status Changed",
             evtDeviceSeen: "Device Seen", evtDeviceLost: "Device Lost",
-            activeDevicesTitle: "Active Devices", activeDevicesSub: "Currently online — device type is a best-effort guess",
-            deviceTypeNote: "Device type is guessed from the hostname and MAC address vendor — it's a best-effort hint, not a certainty (phones with randomized MACs may be misclassified).",
-            noActiveDevices: "No active devices right now.",
+            activeDevicesTitle: "Devices",
+            noActiveDevices: "No devices to show.",
+            clearChat: "Clear chat", powerOn: "Power On", powerOff: "Power Off",
+            alertsHistorySub: "Every alert is kept, including devices that came back online",
+            alertOffline: "Device Offline", alertOnline: "Device Back Online", alertFirewall: "Firewall Finding",
+            alertWentOffline: "went offline", alertBackAfter: "is back online after", agoSuffix: " ago",
             typePhone: "Phone", typeLaptop: "Laptop / PC", typeRouter: "Router", typeFirewall: "Firewall",
             typeCamera: "Camera", typeSwitch: "Switch", typeServer: "Server", typeTv: "TV / Streaming",
             typeIot: "IoT device", typeApple: "Apple device", typeUnknown: "Unknown device",
             netSimulated: "Simulated Lab", netReal: "Real Network",
             statDevices: "Devices", statHealth: "Network Health", statAlerts: "Active Alerts",
-            statAlertsSub: "Requires attention", statTraffic: "Network Traffic", statTrafficSub: "Current traffic",
+            statAlertsSub: "Requires attention",
             topologyTitle: "Network Topology", topologySub: "Current infrastructure", refresh: "Refresh",
             subnetScanned: "Subnet scanned", devicesResponding: "Devices responding", scanMethod: "Scan method",
             alertsTitle: "Recent Alerts", alertsSub: "Latest network events", viewAllAlerts: "View All Alerts",
-            allAlertsTitle: "All Alerts",
-            devicesTitle: "Network Devices", devicesSub: "Connected infrastructure (from registry.json)",
-            colDevice: "Device", colType: "Type", colIp: "IP Address", colStatus: "Status", colCpu: "CPU",
+            allAlertsTitle: "Alert History",
+            colDevice: "Device", colType: "Type", colIp: "IP Address", colStatus: "Status",
             colHostname: "Hostname", colMac: "MAC Address",
             aiTitle: "NetMind AI", aiSub: "Intelligent network assistant", openAssistant: "Open Assistant",
             welcomeTitle: "Welcome to NetMind",
@@ -818,31 +779,34 @@ body[data-net-mode="real"] .sim-only { display: none; }
             navOverview: "نظرة عامة", navDashboard: "الداشبورد", navChat: "محادثة AI",
             navDevices: "الأجهزة", navAlerts: "التنبيهات", navLogs: "السجلات",
             navIntelligence: "الذكاء", navAiAssistant: "مساعد AI",
-            navReports: "التقارير", navRefresh: "تحديث الآن",
+            navReports: "التقارير",
             dashboardTitle: "لوحة الشبكة", dashboardSub: "نظرة لحظية على الشبكة",
             chatTitle: "مساعد NetMind", chatSub: "اسأل عن أي جهاز بالشبكة",
-            devicesPageTitle: "الأجهزة النشطة", devicesPageSub: "الأجهزة المتصلة حاليًا",
+            devicesPageTitle: "الأجهزة", devicesPageSub: "تشغيل أو إطفاء الأجهزة",
+            alertsPageTitle: "التنبيهات", alertsPageSub: "السجل الكامل للتنبيهات",
             logsPageTitle: "سجل الأحداث", logsPageSub: "سجل التشغيل والاتصال",
             logsTitle: "سجل الأحداث", logsSub: "سجل التشغيل والاتصال لهذه الجلسة",
             colTime: "الوقت", colEvent: "الحدث", colDetails: "التفاصيل",
             noLogs: "لا توجد أحداث مسجّلة بعد — شغّل أو أطفئ جهاز عشان تشوفه هنا.",
             evtPowerOn: "تم التشغيل", evtPowerOff: "تم الإطفاء", evtStatusChange: "تغيّرت الحالة",
             evtDeviceSeen: "ظهر جهاز", evtDeviceLost: "اختفى جهاز",
-            activeDevicesTitle: "الأجهزة النشطة", activeDevicesSub: "المتصلة حاليًا — نوع الجهاز تخمين تقريبي",
-            deviceTypeNote: "نوع الجهاز مُخمَّن من اسم الجهاز وشركة مصنّع MAC — تقدير تقريبي مو مؤكد (الجوالات اللي تستخدم MAC عشوائي ممكن يطلع تصنيفها غلط).",
-            noActiveDevices: "لا توجد أجهزة نشطة حاليًا.",
+            activeDevicesTitle: "الأجهزة",
+            noActiveDevices: "لا توجد أجهزة للعرض.",
+            clearChat: "مسح المحادثة", powerOn: "تشغيل", powerOff: "إطفاء",
+            alertsHistorySub: "كل التنبيهات محفوظة، بما فيها عودة الأجهزة للاتصال",
+            alertOffline: "جهاز غير متصل", alertOnline: "عاد الجهاز للاتصال", alertFirewall: "ملاحظة على جدار الحماية",
+            alertWentOffline: "انقطع اتصاله", alertBackAfter: "عاد للاتصال بعد", agoSuffix: "",
             typePhone: "جوال", typeLaptop: "لابتوب / PC", typeRouter: "راوتر", typeFirewall: "فايروول",
             typeCamera: "كاميرا", typeSwitch: "سويتش", typeServer: "سيرفر", typeTv: "تلفزيون / بث",
             typeIot: "جهاز IoT", typeApple: "جهاز Apple", typeUnknown: "جهاز غير معروف",
             netSimulated: "شبكة محاكاة", netReal: "شبكة حقيقية",
             statDevices: "الأجهزة", statHealth: "صحة الشبكة", statAlerts: "تنبيهات نشطة",
-            statAlertsSub: "تحتاج مراجعة", statTraffic: "حركة الشبكة", statTrafficSub: "الحركة الحالية",
+            statAlertsSub: "تحتاج مراجعة",
             topologyTitle: "توبولوجي الشبكة", topologySub: "البنية الحالية", refresh: "تحديث",
             subnetScanned: "النطاق الممسوح", devicesResponding: "أجهزة مستجيبة", scanMethod: "طريقة الفحص",
             alertsTitle: "آخر التنبيهات", alertsSub: "أحدث أحداث الشبكة", viewAllAlerts: "عرض كل التنبيهات",
-            allAlertsTitle: "كل التنبيهات",
-            devicesTitle: "أجهزة الشبكة", devicesSub: "البنية المتصلة (من registry.json)",
-            colDevice: "الجهاز", colType: "النوع", colIp: "عنوان IP", colStatus: "الحالة", colCpu: "المعالج",
+            allAlertsTitle: "سجل التنبيهات",
+            colDevice: "الجهاز", colType: "النوع", colIp: "عنوان IP", colStatus: "الحالة",
             colHostname: "اسم الجهاز", colMac: "عنوان MAC",
             aiTitle: "NetMind AI", aiSub: "مساعد الشبكة الذكي", openAssistant: "فتح المساعد",
             welcomeTitle: "مرحبًا بك في نتمايند",
@@ -914,8 +878,8 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
     function updatePageHeader() {
         var s = STRINGS[lang];
-        var titles = { chat: s.chatTitle, devices: s.devicesPageTitle, dashboard: s.dashboardTitle, logs: s.logsPageTitle };
-        var subs = { chat: s.chatSub, devices: s.devicesPageSub, dashboard: s.dashboardSub, logs: s.logsPageSub };
+        var titles = { chat: s.chatTitle, devices: s.devicesPageTitle, dashboard: s.dashboardTitle, logs: s.logsPageTitle, alerts: s.alertsPageTitle };
+        var subs = { chat: s.chatSub, devices: s.devicesPageSub, dashboard: s.dashboardSub, logs: s.logsPageSub, alerts: s.alertsPageSub };
         document.getElementById("pageTitle").textContent = titles[currentView] || s.dashboardTitle;
         document.getElementById("pageSubtitle").textContent = subs[currentView] || s.dashboardSub;
     }
@@ -926,6 +890,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
         document.getElementById("dashboardView").style.display = view === "dashboard" ? "" : "none";
         document.getElementById("devicesView").style.display = view === "devices" ? "" : "none";
         document.getElementById("logsView").style.display = view === "logs" ? "" : "none";
+        document.getElementById("alertsView").style.display = view === "alerts" ? "" : "none";
         document.getElementById("chatView").style.display = view === "chat" ? "" : "none";
 
         // Only the Overview section's links (.nav-primary) get the active
@@ -939,7 +904,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
         updatePageHeader();
 
-        if (view === "dashboard" || view === "devices" || view === "logs") {
+        if (view === "dashboard" || view === "devices" || view === "logs" || view === "alerts") {
             Dashboard.refresh();
         } else {
             document.getElementById("inputBox").focus();
@@ -1131,17 +1096,52 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
     var dashState = { devices: [], alerts: [], logs: [], connected: false, lastError: null, pending: {}, busy: {} };
 
+    function activeAlerts() { return dashState.alerts.filter(function (a) { return a.active !== false; }); }
+
     function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
 
     function timeAgo(ts) {
-        var diff = Math.max(0, Date.now() - ts);
-        var mins = Math.floor(diff / 60000);
-        if (mins < 1) return lang === "ar" ? "الآن" : "now";
-        if (mins < 60) return mins + (lang === "ar" ? " د" : "m");
-        var hrs = Math.floor(mins / 60);
-        if (hrs < 24) return hrs + (lang === "ar" ? " س" : "h");
-        return Math.floor(hrs / 24) + (lang === "ar" ? " ي" : "d");
+        var secs = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+        var ar = lang === "ar", n, unit;
+        if (secs < 5) return ar ? "الآن" : "just now";
+        if (secs < 60) { n = secs; unit = ar ? " ث" : "s"; }
+        else if (secs < 3600) { n = Math.floor(secs / 60); unit = ar ? " د" : "m"; }
+        else if (secs < 86400) { n = Math.floor(secs / 3600); unit = ar ? " س" : "h"; }
+        else { n = Math.floor(secs / 86400); unit = ar ? " ي" : "d"; }
+        return ar ? "قبل " + n + unit : n + unit + " ago";
     }
+
+    function fmtDuration(total) {
+        var s = Math.round(total), ar = lang === "ar";
+        var u = ar ? { h: "س", m: "د", s: "ث" } : { h: "h", m: "m", s: "s" };
+        if (s < 60) return s + u.s;
+        if (s < 3600) return Math.floor(s / 60) + u.m + " " + String(s % 60).padStart(2, "0") + u.s;
+        return Math.floor(s / 3600) + u.h + " " + String(Math.floor((s % 3600) / 60)).padStart(2, "0") + u.m;
+    }
+
+    function alertText(a) {
+        var t = STRINGS[lang], dev = a.device || "";
+        if (a.kind === "device_offline") return { title: t.alertOffline, detail: dev + " " + t.alertWentOffline };
+        if (a.kind === "device_online") return { title: t.alertOnline, detail: dev + " " + t.alertBackAfter + " " + fmtDuration(a.down_seconds || 0) };
+        if (a.kind === "firewall_finding") return { title: t.alertFirewall, detail: a.detail || "" };
+        return { title: a.title || "", detail: a.detail || "" };
+    }
+
+    function alertItemHtml(a, withClock) {
+        var x = alertText(a);
+        var cls = "alert-item" + (a.kind === "device_online" ? " ok" : "") + (a.active === false && a.kind !== "device_online" ? " closed" : "");
+        var clock = withClock ? " · " + new Date(a.ts).toLocaleString(lang === "ar" ? "ar-SA" : "en-US") : "";
+        return '<div class="' + cls + '"><div class="alert-title"><span class="dot"></span>' + x.title + "</div>" +
+            '<div class="alert-time">' + x.detail + "</div>" +
+            '<div class="alert-when"><span class="ago" data-ts="' + a.ts + '">' + timeAgo(a.ts) + "</span>" + clock + "</div></div>";
+    }
+
+    // Keeps every "x ago" label counting up without re-rendering anything.
+    setInterval(function () {
+        document.querySelectorAll(".ago[data-ts]").forEach(function (el) {
+            el.textContent = timeAgo(Number(el.getAttribute("data-ts")));
+        });
+    }, 1000);
 
     function statusLabel(status) {
         if (status === "online") return lang === "ar" ? "متصل" : "Online";
@@ -1169,7 +1169,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
        reliable for every device — most modern phones randomize their MAC
        address by default (iOS 14+/Android 10+), which defeats vendor
        lookup entirely, so a phone can easily show up as "Unknown device".
-       That limitation is shown directly in the UI (deviceTypeNote), not
+       That limitation is documented in the report (real-network limitations), not
        hidden — same spirit as the existing Limitations section already
        written for the real-network discovery module.
        ===================================================================== */
@@ -1216,6 +1216,12 @@ body[data-net-mode="real"] .sim-only { display: none; }
         return MAC_VENDORS[prefix] || null;
     }
 
+    function phoneHostIds() {
+        var ids = dashState.devices.filter(function (x) { return x.type === "host"; })
+            .map(function (x) { return x.id; }).sort();
+        return ids.filter(function (_, i) { return i % 2 === 1; });
+    }
+
     function classifyDevice(d, mode) {
         var s = STRINGS[lang];
 
@@ -1227,7 +1233,10 @@ body[data-net-mode="real"] .sim-only { display: none; }
                 switch: { icon: ICONS.switch, label: s.typeSwitch },
                 server: { icon: ICONS.server, label: s.typeServer }
             };
-            return simMap[d.type] || { icon: ICONS.laptop, label: TYPE_LABELS[d.type] || d.type || s.typeUnknown };
+            if (simMap[d.type]) return simMap[d.type];
+            // Purely cosmetic: every other host (sorted by id) gets a phone icon so the lab looks mixed.
+            if (d.type === "host" && phoneHostIds().indexOf(d.id) !== -1) return { icon: ICONS.phone, label: TYPE_LABELS.host };
+            return { icon: ICONS.laptop, label: TYPE_LABELS[d.type] || d.type || s.typeUnknown };
         }
 
         var name = (d.name || "").toLowerCase();
@@ -1314,10 +1323,8 @@ body[data-net-mode="real"] .sim-only { display: none; }
             var total = dashState.devices.length;
             var online = dashState.devices.filter(function (d) { return d.status !== "offline"; }).length;
             var offline = total - online;
-            var avgCpu = total ? dashState.devices.reduce(function (s, d) { return s + (d.cpu || 0); }, 0) / total : 0;
-            var health = total ? Math.round(clamp(100 - avgCpu * 0.45 - offline * 6, 0, 100)) : 0;
-            var traffic = dashState.devices.reduce(function (s, d) { return s + (d.traffic || 0); }, 0);
-            return { total: total, online: online, offline: offline, health: health, traffic: traffic };
+            var health = total ? Math.round(online / total * 100) : 0;
+            return { total: total, online: online, offline: offline, health: health };
         },
 
         renderConnectionState: function () {
@@ -1325,10 +1332,8 @@ body[data-net-mode="real"] .sim-only { display: none; }
             badge.textContent = "● " + STRINGS[lang].backendDown;
             badge.classList.add("degraded");
 
-            var tbody = document.getElementById("devices-tbody");
-            if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="empty-note">' + STRINGS[lang].backendDownHint + " (" + (dashState.lastError || "") + ")</td></tr>";
-            var ai = document.getElementById("ai-summary");
-            if (ai) ai.innerHTML = "<strong>" + STRINGS[lang].backendDownHint + "</strong>";
+            var grid = document.getElementById("devices-grid");
+            if (grid) grid.innerHTML = '<div class="empty-note">' + STRINGS[lang].backendDownHint + " (" + (dashState.lastError || "") + ")</div>";
         },
 
         renderStats: function () {
@@ -1337,13 +1342,12 @@ body[data-net-mode="real"] .sim-only { display: none; }
             document.getElementById("stat-devices-sub").textContent = s.online + " online · " + s.offline + " offline";
             document.getElementById("stat-health").textContent = s.total ? (s.health + "%") : "--";
             document.getElementById("stat-health-sub").textContent = s.health >= 90 ? "Excellent condition" : (s.health >= 70 ? "Good condition" : "Needs attention");
-            document.getElementById("stat-alerts").textContent = dashState.alerts.length;
-            document.getElementById("stat-traffic").textContent = s.traffic.toFixed(1) + " GB/s";
+            document.getElementById("stat-alerts").textContent = activeAlerts().length;
 
             var badge = document.getElementById("online-badge");
             if (!dashState.connected) return;
-            if (s.offline > 0 || s.health < 80) {
-                badge.textContent = "● " + (s.offline > 0 ? s.offline + " Device(s) Down" : "Degraded Performance");
+            if (s.offline > 0) {
+                badge.textContent = "● " + s.offline + " Device(s) Down";
                 badge.classList.add("degraded");
             } else {
                 badge.textContent = "● System Online";
@@ -1375,7 +1379,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
                 el.className = "node" + (d.type === "router" ? " node-main" : "");
                 if (d.status === "warning") el.className += " node-warning";
                 if (d.status === "offline") el.className += " node-offline";
-                var sub = d.status === "offline" ? "offline" : d.cpu + "% cpu";
+                var sub = d.status === "offline" ? "offline" : (d.ip || "");
                 el.innerHTML = d.name + "<small>" + sub + "</small>";
                 return el;
             }
@@ -1393,106 +1397,62 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
         renderAlerts: function () {
             var list = document.getElementById("alerts-list");
-            document.getElementById("alerts-count-badge").textContent = dashState.alerts.length;
+            document.getElementById("alerts-count-badge").textContent = activeAlerts().length;
             list.innerHTML = "";
             if (dashState.alerts.length === 0) {
                 list.innerHTML = '<div class="empty-note">' + (netMode === "real" ? STRINGS[lang].noAlertsReal : STRINGS[lang].noAlertsSim) + "</div>";
                 return;
             }
-            dashState.alerts.slice(0, 3).forEach(function (a) {
-                var div = document.createElement("div");
-                div.className = "alert-item";
-                div.innerHTML = '<div class="alert-title"><span class="dot"></span>' + a.title + "</div>" +
-                    '<div class="alert-time">' + (a.detail || "") + " · " + timeAgo(a.ts || Date.now()) + "</div>";
-                list.appendChild(div);
-            });
+            dashState.alerts.slice(0, 3).forEach(function (a) { list.insertAdjacentHTML("beforeend", alertItemHtml(a, false)); });
         },
 
-        renderAlertsModal: function () {
+        renderAlertsView: function () {
             var list = document.getElementById("all-alerts-list");
+            document.getElementById("alerts-total-badge").textContent = dashState.alerts.length;
             list.innerHTML = "";
             if (dashState.alerts.length === 0) {
                 list.innerHTML = '<div class="empty-note">' + STRINGS[lang].noAlerts + "</div>";
                 return;
             }
-            dashState.alerts.forEach(function (a) {
-                var div = document.createElement("div");
-                div.className = "alert-item";
-                div.innerHTML = '<div class="alert-title"><span class="dot"></span>' + a.title + "</div>" +
-                    '<div class="alert-time">' + (a.detail || "") + " · " + timeAgo(a.ts || Date.now()) + "</div>";
-                list.appendChild(div);
-            });
-        },
-
-        renderDevicesTable: function () {
-            var tbody = document.getElementById("devices-tbody");
-            tbody.innerHTML = "";
-            if (dashState.devices.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="empty-note">' + (netMode === "real" ? STRINGS[lang].noDevicesReal : STRINGS[lang].noDevicesSim) + "</td></tr>";
-                return;
-            }
-
-            dashState.devices.forEach(function (d) {
-                var tr = document.createElement("tr");
-
-                if (netMode === "real") {
-                    tr.innerHTML =
-                        '<td class="fw-semibold">' + (d.name || "--") + "</td>" +
-                        "<td>" + (d.ip || "") + "</td>" +
-                        "<td>" + (d.mac || "--") + "</td>" +
-                        '<td><span class="status ' + statusClass(d.status) + '">' + statusLabel(d.status) + "</span></td>" +
-                        "<td></td><td></td>";
-                } else {
-                    var cpuDisplay = d.status === "offline"
-                        ? "--"
-                        : '<span class="cpu-bar-track"><span class="cpu-bar-fill" style="width:' + d.cpu + '%"></span></span>' + d.cpu + "%";
-                    var canPower = d.type !== "router";
-                    var isPending = !!(dashState.pending[d.id] || dashState.busy[d.id]);
-                    var powerBtn = canPower
-                        ? '<button class="btn-light-netmind power-toggle" data-id="' + d.id + '" data-action="' + (d.status === "offline" ? "on" : "off") + '"' + (isPending ? " disabled" : "") + ">" +
-                          (isPending ? "…" : (d.status === "offline" ? "Power On" : "Power Off")) + "</button>"
-                        : "";
-                    tr.innerHTML =
-                        '<td class="fw-semibold">' + d.name + "</td>" +
-                        "<td>" + (TYPE_LABELS[d.type] || d.type || "") + "</td>" +
-                        "<td>" + (d.ip || "") + "</td>" +
-                        '<td><span class="status ' + statusClass(d.status) + '">' + statusLabel(d.status) + "</span></td>" +
-                        "<td>" + cpuDisplay + "</td>" +
-                        "<td>" + powerBtn + "</td>";
-                }
-                tbody.appendChild(tr);
-            });
+            dashState.alerts.forEach(function (a) { list.insertAdjacentHTML("beforeend", alertItemHtml(a, true)); });
         },
 
         renderDevicesGrid: function () {
             var grid = document.getElementById("devices-grid");
-            if (!grid) return; // only present on the Devices view
+            if (!grid) return;
 
-            var active = dashState.devices.filter(function (d) { return d.status !== "offline"; });
-            document.getElementById("active-devices-count").textContent = active.length;
-
-            var note = document.getElementById("devices-grid-note");
-            if (note) note.style.display = netMode === "real" ? "" : "none"; // the guess-accuracy caveat only applies to real devices
+            var devices = dashState.devices;
+            var online = devices.filter(function (d) { return d.status !== "offline"; }).length;
+            document.getElementById("active-devices-count").textContent = online + " / " + devices.length;
 
             grid.innerHTML = "";
-            if (active.length === 0) {
-                grid.innerHTML = '<div class="empty-note">' + STRINGS[lang].noActiveDevices + "</div>";
+            if (devices.length === 0) {
+                grid.innerHTML = '<div class="empty-note">' + (netMode === "real" ? STRINGS[lang].noDevicesReal : STRINGS[lang].noDevicesSim) + "</div>";
                 return;
             }
 
-            active.forEach(function (d) {
+            var s = STRINGS[lang];
+            devices.forEach(function (d) {
                 var info = classifyDevice(d, netMode);
+                var off = d.status === "offline";
                 var card = document.createElement("div");
-                card.className = "device-card";
+                card.className = "device-card" + (off ? " is-off" : "");
                 var metaLine = netMode === "real" ? (d.mac || "--") : (d.ip || "");
                 var vendorLine = info.vendor ? " · " + info.vendor : "";
+                var canPower = netMode === "simulated" && d.type !== "router";
+                var isPending = !!(dashState.pending[d.id] || dashState.busy[d.id]);
+                var btn = canPower
+                    ? '<button class="btn-light-netmind power-toggle" data-id="' + d.id + '" data-action="' + (off ? "on" : "off") + '"' + (isPending ? " disabled" : "") + ">" +
+                      (isPending ? "…" : (off ? s.powerOn : s.powerOff)) + "</button>"
+                    : "";
                 card.innerHTML =
                     '<div class="device-icon">' + info.icon + "</div>" +
                     '<div class="device-info">' +
                         '<div class="device-name">' + (d.name || d.id || "--") + "</div>" +
                         '<div class="device-meta">' + metaLine + "</div>" +
                         '<div class="device-type-label">' + info.label + vendorLine + "</div>" +
-                    "</div>";
+                    "</div>" +
+                    '<div class="device-side"><span class="status ' + statusClass(d.status) + '">' + statusLabel(d.status) + "</span>" + btn + "</div>";
                 grid.appendChild(card);
             });
         },
@@ -1579,39 +1539,13 @@ body[data-net-mode="real"] .sim-only { display: none; }
             });
         },
 
-        renderAiSummary: function () {
-            if (!dashState.connected) return;
-            var el = document.getElementById("ai-summary");
-            if (!el) return; // the AI summary card was removed from the dashboard
-            var s = this.computeStats();
-
-            if (netMode === "real") {
-                el.innerHTML = "<strong>" + s.total + " device(s) found on the real network.</strong> Read-only monitoring mode — no power control or firewall data available here.";
-                return;
-            }
-
-            var pieces = [];
-            var offlineDevs = dashState.devices.filter(function (d) { return d.status === "offline"; });
-            var warnDevs = dashState.devices.filter(function (d) { return d.status === "warning"; });
-            var lead = dashState.alerts.length > 0
-                ? dashState.alerts.length + " تنبيه(ات) نشطة تحتاج مراجعة."
-                : "لا توجد تنبيهات نشطة حالياً.";
-            if (offlineDevs.length > 0) pieces.push("جهاز غير متصل: " + offlineDevs.map(function (d) { return d.name; }).join("، ") + ".");
-            if (warnDevs.length > 0) pieces.push("استخدام مرتفع للمعالج على " + warnDevs.map(function (d) { return d.name + " (" + d.cpu + "%)"; }).join("، ") + ".");
-            if (pieces.length === 0 && s.total > 0) pieces.push("جميع الأجهزة الـ " + s.total + " ضمن المعدل الطبيعي، وصحة الشبكة " + s.health + "%.");
-            el.innerHTML = "<strong>" + lead + "</strong> " + pieces.join(" ");
-        },
-
         renderAll: function () {
             this.renderStats();
             this.renderTopology();
             this.renderAlerts();
-            this.renderDevicesTable();
             this.renderDevicesGrid();
+            this.renderAlertsView();
             this.renderLogs();
-            this.renderAiSummary();
-            var modalEl = document.getElementById("allAlertsModal");
-            if (modalEl.classList.contains("show")) this.renderAlertsModal();
         }
     };
 
@@ -1691,7 +1625,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
     }
 
     function initDashboardHandlers() {
-        document.getElementById("devices-tbody").addEventListener("click", function (e) {
+        document.getElementById("devices-grid").addEventListener("click", function (e) {
             var btn = e.target.closest(".power-toggle");
             if (!btn || netMode !== "simulated" || btn.disabled) return;
 
@@ -1724,7 +1658,6 @@ body[data-net-mode="real"] .sim-only { display: none; }
                 var device = dashState.devices.find(function (d) { return d.id === id; });
                 if (device) {
                     device.status = expected;
-                    if (expected === "offline") device.cpu = 0;
                 }
                 Dashboard._epoch++;
                 dashState.pending[id] = expected; // keeps the new state through periodic polls
@@ -1760,12 +1693,8 @@ body[data-net-mode="real"] .sim-only { display: none; }
             }).then(release);
         });
 
-        document.getElementById("allAlertsModal").addEventListener("show.bs.modal", function () { Dashboard.renderAlertsModal(); });
+        document.getElementById("view-all-alerts").addEventListener("click", function () { showView("alerts"); });
 
-        document.getElementById("reset-demo").addEventListener("click", function (e) {
-            e.preventDefault();
-            Dashboard.refresh();
-        });
         var viewNetBtn = document.getElementById("view-network-btn");
         if (viewNetBtn) viewNetBtn.addEventListener("click", function (e) {
             e.preventDefault();
@@ -1783,6 +1712,14 @@ body[data-net-mode="real"] .sim-only { display: none; }
         sendBtn = document.getElementById("sendBtn");
         examplesEl = document.getElementById("examples");
 
+        document.getElementById("chat-clear").addEventListener("click", function () {
+            chatEl.innerHTML = "";
+            chatEl.classList.remove("active");
+            welcomeEl.classList.remove("hidden");
+            sessionId = crypto.randomUUID();   // a fresh session also drops the server-side history
+            sendBtn.disabled = false;
+            inputBox.focus();
+        });
         sendBtn.addEventListener("click", function () { Chat.send(); });
         inputBox.addEventListener("keydown", function (e) { if (e.key === "Enter") Chat.send(); });
 

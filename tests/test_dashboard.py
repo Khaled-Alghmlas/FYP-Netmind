@@ -1,18 +1,12 @@
-import time
 from types import SimpleNamespace as NS
 
 import device_control as dc
 
 
 class FakeContainer:
-    def __init__(self, name, status="running", stats_delay=0.3):
-        self.name, self.status, self._delay = name, status, stats_delay
+    def __init__(self, name, status="running"):
+        self.name, self.status = name, status
         self.stopped_with = None
-
-    def stats(self, stream=False):
-        time.sleep(self._delay)  # a real Docker stats call blocks about a second
-        return {"cpu_stats": {"cpu_usage": {"total_usage": 200}, "system_cpu_usage": 2000, "online_cpus": 1},
-                "precpu_stats": {"cpu_usage": {"total_usage": 100}, "system_cpu_usage": 1000}}
 
     def stop(self, timeout=10):
         self.stopped_with = timeout
@@ -38,12 +32,12 @@ def setup(monkeypatch, n=12):
     return boxes, calls
 
 
-def test_dashboard_reads_stats_in_parallel(monkeypatch):
-    setup(monkeypatch, n=12)  # sequential would take 12 x 0.3 = 3.6 s
-    t = time.monotonic()
+def test_dashboard_has_no_cpu_data_and_makes_one_docker_call(monkeypatch):
+    boxes, calls = setup(monkeypatch, n=12)
     devices = dc.list_devices_dashboard()
-    assert time.monotonic() - t < 1.5
+    assert calls["list"] == 1
     assert len(devices) == 12 and all(d["status"] == "online" for d in devices)
+    assert all("cpu" not in d and "traffic" not in d for d in devices)
 
 
 def test_dashboard_is_cached_and_power_off_invalidates(monkeypatch):
@@ -55,14 +49,6 @@ def test_dashboard_is_cached_and_power_off_invalidates(monkeypatch):
     assert boxes["c1"].stopped_with == 2           # no 10 s wait for SIGTERM
     states = {d["id"]: d["status"] for d in dc.list_devices_dashboard()}
     assert states["host-1"] == "offline" and states["host-0"] == "online"
-
-
-def test_alerts_reuse_cached_devices(monkeypatch):
-    boxes, calls = setup(monkeypatch, n=3)
-    boxes["c2"].status = "exited"
-    dc.list_devices_dashboard()
-    alerts = dc.get_alerts()
-    assert calls["list"] == 1 and any(a["detail"] == "host-2" for a in alerts)
 
 
 def test_invalidation_during_a_running_computation_is_not_lost(monkeypatch):
