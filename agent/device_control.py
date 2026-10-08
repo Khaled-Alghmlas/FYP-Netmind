@@ -337,11 +337,14 @@ def _container_cpu_percent(container):
 # (power, confirm, chat tools). So: fetch the container list once, read CPU stats
 # in parallel, and share one short-lived cached result between callers.
 DASHBOARD_TTL = 3.0
-_dash_cache = {"ts": 0.0, "data": None}
+_dash_cache = {"ts": 0.0, "data": None, "gen": 0}
 _dash_lock = threading.Lock()
 
 
 def _invalidate_dashboard_cache():
+    # Bump the generation too: a computation that started before this call must not
+    # store its (now stale) result as fresh when it finishes.
+    _dash_cache["gen"] += 1
     _dash_cache["ts"] = 0.0
 
 
@@ -384,8 +387,13 @@ def list_devices_dashboard():
     Cached for DASHBOARD_TTL seconds; concurrent callers share one computation."""
     with _dash_lock:
         if _dash_cache["data"] is None or time.monotonic() - _dash_cache["ts"] >= DASHBOARD_TTL:
-            _dash_cache["data"] = _compute_dashboard()
-            _dash_cache["ts"] = time.monotonic()
+            gen = _dash_cache["gen"]
+            data = _compute_dashboard()
+            _dash_cache["data"] = data
+            # If a power change invalidated the cache while we were computing, this
+            # snapshot may predate it: serve it once, but do not keep it as fresh.
+            _dash_cache["ts"] = time.monotonic() if gen == _dash_cache["gen"] else 0.0
+            return [dict(d) for d in data]
         return [dict(d) for d in _dash_cache["data"]]
 
 

@@ -1260,6 +1260,8 @@ body[data-net-mode="real"] .sim-only { display: none; }
     }
 
     var Dashboard = {
+        _epoch: 0,         // bumped whenever a power action starts or finishes
+        _needsRefresh: false,
         refresh: function () {
             // Don't hammer the backend (especially the slow real-network
             // scan) while the user is on the Chat view — but the Devices
@@ -1268,8 +1270,11 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
             // Never stack a new poll on top of one that is still running: a slow
             // backend would otherwise pile up requests and starve power/confirm calls.
-            if (Dashboard._refreshing) return;
+            if (Dashboard._refreshing) { Dashboard._needsRefresh = true; return; }
             Dashboard._refreshing = true;
+            // A power action that finishes while this poll is in flight makes its answer
+            // stale (it was read before the change); compare epochs and drop it if so.
+            var epoch = Dashboard._epoch;
 
             var requestedMode = netMode;
             var calls = [Api.devices(requestedMode), Api.alerts(requestedMode)];
@@ -1279,6 +1284,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
             Promise.all(calls).then(function (results) {
                 if (requestedMode !== netMode) return; // stale — mode changed while this was in flight
+                if (epoch !== Dashboard._epoch) { Dashboard._needsRefresh = true; return; } // predates a power change
                 dashState.devices = results[0] || [];
                 // أجهزة فيها عملية تشغيل/إطفاء قيد التنفيذ تحتفظ بحالتها المتفائلة
                 // هنا بدل ما أي استعلام دوري (كل 5 ثواني) يرجّعها لحالتها القديمة
@@ -1300,6 +1306,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
                 Dashboard.renderConnectionState();
             }).then(function () {
                 Dashboard._refreshing = false;
+                if (Dashboard._needsRefresh) { Dashboard._needsRefresh = false; Dashboard.refresh(); }
             });
         },
 
@@ -1501,6 +1508,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
             // finish() دايماً تمسح pending وتعيد الرسم، حتى لو صار استثناء غير
             // متوقع بالرسم نفسه — هذا يضمن الزر ما يعلّق "pending" للأبد مهما صار.
             function finish(devices) {
+                Dashboard._epoch++;
                 delete dashState.pending[id];
                 if (devices) dashState.devices = devices;
                 try {
@@ -1696,6 +1704,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
             function release() {
                 if (released) return;
                 released = true;
+                Dashboard._epoch++;
                 clearTimeout(safety);
                 delete dashState.busy[id];
                 delete dashState.pending[id];
@@ -1707,14 +1716,17 @@ body[data-net-mode="real"] .sim-only { display: none; }
             dashState.busy[id] = true;
             safeRender();
 
-            var device = dashState.devices.find(function (d) { return d.id === id; });
             var expected = action === "on" ? "online" : "offline";
 
             function applyOptimistic() {
+                // Look the device up now, not at click time: background polls replace the
+                // objects in dashState.devices, so one captured earlier may be detached.
+                var device = dashState.devices.find(function (d) { return d.id === id; });
                 if (device) {
                     device.status = expected;
                     if (expected === "offline") device.cpu = 0;
                 }
+                Dashboard._epoch++;
                 dashState.pending[id] = expected; // keeps the new state through periodic polls
                 safeRender();
             }

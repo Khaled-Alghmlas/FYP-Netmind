@@ -63,3 +63,31 @@ def test_alerts_reuse_cached_devices(monkeypatch):
     dc.list_devices_dashboard()
     alerts = dc.get_alerts()
     assert calls["list"] == 1 and any(a["detail"] == "host-2" for a in alerts)
+
+
+def test_invalidation_during_a_running_computation_is_not_lost(monkeypatch):
+    """A poll that started before power_off must not leave its stale snapshot cached as fresh."""
+    import threading
+    boxes, calls = setup(monkeypatch, n=2)
+    started, release = threading.Event(), threading.Event()
+    real = dc._compute_dashboard
+
+    def slow():
+        snapshot = real()               # reads state before the power-off below
+        started.set()
+        release.wait(5)
+        return snapshot
+
+    monkeypatch.setattr(dc, "_compute_dashboard", slow)
+    result = {}
+    t = threading.Thread(target=lambda: result.update(first=dc.list_devices_dashboard()))
+    t.start()
+    assert started.wait(5)
+    boxes["c1"].stop(timeout=2)         # device goes down while the poll is in flight
+    dc._invalidate_dashboard_cache()
+    release.set()
+    t.join()
+    assert {d["id"]: d["status"] for d in result["first"]}["host-1"] == "online"  # the stale snapshot itself
+    monkeypatch.setattr(dc, "_compute_dashboard", real)
+    states = {d["id"]: d["status"] for d in dc.list_devices_dashboard()}
+    assert states["host-1"] == "offline"  # the next call recomputes instead of reusing it
