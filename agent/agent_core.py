@@ -13,6 +13,7 @@ import uuid
 from collections import deque
 from pathlib import Path
 
+from storage import StorageError
 from tool_catalog import registry
 
 # ---------------------------------------------------------------------------
@@ -70,14 +71,16 @@ def trim_history(history, max_messages=MAX_HISTORY_MESSAGES):
 
 
 class SessionStore:
-    """In-memory chat histories with a TTL and a size cap."""
+    """Chat histories with a TTL and a size cap. Kept in memory for speed and, when given a
+    storage.Database, saved there too, so a conversation survives a server restart."""
 
-    def __init__(self, ttl=SESSION_TTL_SECONDS, max_sessions=MAX_SESSIONS, clock=time.time):
+    def __init__(self, ttl=SESSION_TTL_SECONDS, max_sessions=MAX_SESSIONS, clock=time.time, db=None):
         self._data = {}          # key -> {"history": [...], "last": ts}
         self._lock = threading.Lock()
         self.ttl = ttl
         self.max_sessions = max_sessions
         self._clock = clock
+        self.db = db
 
     def get(self, key, system_prompt):
         now = self._clock()
@@ -85,7 +88,8 @@ class SessionStore:
             self._prune(now)
             entry = self._data.get(key)
             if entry is None:
-                entry = {"history": [{"role": "system", "content": system_prompt}], "last": now}
+                history = self._load(key, now, system_prompt)
+                entry = {"history": history or [{"role": "system", "content": system_prompt}], "last": now}
                 self._data[key] = entry
             entry["last"] = now
             return entry["history"]
@@ -94,24 +98,77 @@ class SessionStore:
         with self._lock:
             if key in self._data:
                 self._data[key]["history"][:] = trim_history(history)
+                self._persist(key)
 
     def append(self, key, message):
         """Add a message to an existing session (no-op if it has expired)."""
         with self._lock:
             if key in self._data:
                 self._data[key]["history"].append(message)
+                self._persist(key)
+
+    # -- storage (never lets a database problem break a request) -----------------------
+    def _db(self, call, *args):
+        if self.db is None:
+            return None
+        try:
+            return call(*args)
+        except StorageError:
+            return None
+
+    def _persist(self, key):
+        if self.db is not None:
+            history = [_persistable(m) for m in self._data[key]["history"]]
+            self._db(self.db.save_session, key, history, self._clock())
+
+    def _load(self, key, now, system_prompt):
+        """A session saved by an earlier run, or None. It gets the CURRENT system prompt, so a
+        prompt change in the code applies to conversations that were already going."""
+        if self.db is None:
+            return None
+        stored = self._db(self.db.load_session, key)
+        if not stored:
+            return None
+        messages, last = stored
+        if now - last > self.ttl:
+            self._db(self.db.delete_session, key)
+            return None
+        system = {"role": "system", "content": system_prompt}
+        if messages and messages[0].get("role") == "system":
+            messages[0] = system
+        else:
+            messages.insert(0, system)
+        return messages
 
     def _prune(self, now):
         expired = [k for k, v in self._data.items() if now - v["last"] > self.ttl]
         for k in expired:
             del self._data[k]
+        if self.db is not None:
+            self._db(self.db.delete_sessions_before, now - self.ttl)
         if len(self._data) >= self.max_sessions:
             oldest = sorted(self._data, key=lambda k: self._data[k]["last"])
             for k in oldest[: len(self._data) - self.max_sessions + 1]:
-                del self._data[k]
+                del self._data[k]       # only leaves memory: it is still stored and reloads on use
 
     def __len__(self):
         return len(self._data)
+
+
+def _persistable(message):
+    """A copy of a message that is safe to write to disk: secrets in the arguments of the model's
+    tool calls (a new camera password, say) are masked. The in-memory history keeps the real value."""
+    calls = message.get("tool_calls")
+    if not calls:
+        return message
+    safe = []
+    for call in calls:
+        fn = call.get("function", {})
+        args, err = _parse_args(fn.get("arguments"))
+        if not err and any(k in args for k in SENSITIVE_ARGS):
+            call = {**call, "function": {**fn, "arguments": json.dumps(_redact(args))}}
+        safe.append(call)
+    return {**message, "tool_calls": safe}
 
 
 # ---------------------------------------------------------------------------
@@ -125,13 +182,20 @@ def _redact(args):
 
 class AuditLog:
     """Records every tool call: who, what, arguments, result, when.
-    Kept in memory (for the API) and appended to a JSONL file (for evidence)."""
+    Kept in memory (for the API) and stored in a storage.Database (so it survives restarts).
+    Without a database it appends to a JSONL file instead, as before. If the database cannot be
+    written, the entry still goes to the JSONL file when one is configured."""
 
-    def __init__(self, path=None, max_entries=1000):
+    def __init__(self, path=None, max_entries=1000, db=None):
         self.path = Path(path) if path else None
+        self.db = db
         self.entries = deque(maxlen=max_entries)
         self._lock = threading.Lock()
-        self._load_existing()
+        if db is None:
+            self._load_existing()
+        else:
+            self._import_jsonl_once()
+            self._load_from_db(max_entries)
 
     def _load_existing(self):
         """Pick up entries written by earlier runs so the history survives restarts."""
@@ -147,6 +211,31 @@ class AuditLog:
         except OSError:
             pass
 
+    def _import_jsonl_once(self):
+        """First run on a new database: bring in the old audit.jsonl so no evidence is lost.
+        The file itself is left untouched."""
+        if not self.path or not self.path.exists():
+            return
+        try:
+            if self.db.audit_count() > 0:
+                return
+            with open(self.path, encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(entry, dict) and entry.get("tool") and entry.get("status"):
+                        self.db.add_audit(entry)
+        except (OSError, StorageError):
+            pass
+
+    def _load_from_db(self, limit):
+        try:
+            self.entries.extend(self.db.recent_audit(limit))
+        except StorageError:
+            pass
+
     def record(self, actor, tool, args, result, status):
         entry = {
             "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
@@ -158,7 +247,14 @@ class AuditLog:
         }
         with self._lock:
             self.entries.append(entry)
-            if self.path:
+            stored = False
+            if self.db is not None:
+                try:
+                    self.db.add_audit(entry)
+                    stored = True
+                except StorageError:
+                    pass
+            if not stored and self.path:
                 try:
                     self.path.parent.mkdir(parents=True, exist_ok=True)
                     with open(self.path, "a", encoding="utf-8") as f:

@@ -14,6 +14,7 @@ class Settings(BaseModel):
     model: str = DEFAULT_MODEL
     registry_path: Path = ROOT / "topology" / "registry.json"
     logs_dir: Path = ROOT / "logs"
+    database_path: Path = ROOT / "logs" / "netmind.db"
 
     @classmethod
     def from_env(cls, env=None):
@@ -23,4 +24,6 @@ class Settings(BaseModel):
         values = {"groq_api_key": key}
         if env.get("NETMIND_MODEL"):
             values["model"] = env["NETMIND_MODEL"]
+        if env.get("NETMIND_DB"):
+            values["database_path"] = Path(env["NETMIND_DB"])
         return cls(**values)

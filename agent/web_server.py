@@ -25,6 +25,7 @@ from pydantic import BaseModel
 import agent_core as core
 import backends
 from llm import GroqProvider
+from storage import open_database
 from settings import Settings
 import device_control as dc
 import network_scanner as ns
@@ -186,12 +187,14 @@ MODES = {
     },
 }
 
-# In-memory chat history per (session_id, mode) pair, with TTL + trimming
-SESSIONS = core.SessionStore()
+# Chat history per (session_id, mode) pair: in memory, saved to SQLite, with TTL + trimming.
+# If the database cannot be opened DB is None and everything runs in memory, as before.
+DB = open_database(settings.database_path)
+SESSIONS = core.SessionStore(db=DB)
 
-# Audit log of every tool call (in memory + logs/audit.jsonl) and the safety
+# Audit log of every tool call (in memory + SQLite; an old logs/audit.jsonl is imported once) and the safety
 # guard that requires confirmation for destructive tools.
-AUDIT_LOG = core.AuditLog(path=Path(__file__).resolve().parent.parent / "logs" / "audit.jsonl")
+AUDIT_LOG = core.AuditLog(path=Path(__file__).resolve().parent.parent / "logs" / "audit.jsonl", db=DB)
 GUARDS = {
     mode: core.Guard(MODES[mode]["dispatch"], BACKENDS[mode].resolve, AUDIT_LOG,
                      supports=BACKENDS[mode].supports)
