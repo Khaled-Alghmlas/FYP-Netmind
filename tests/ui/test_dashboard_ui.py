@@ -48,7 +48,7 @@ def base_url(monkeypatch):
     monkeypatch.setattr(ws, "ALERTS_PATH", None)
     audit = core.AuditLog()
     monkeypatch.setattr(ws, "AUDIT_LOG", audit)
-    monkeypatch.setitem(ws.GUARDS, "simulated", core.Guard(ws.SIMULATED_DISPATCH, dc.find_devices, audit))
+    monkeypatch.setitem(ws.GUARDS, "simulated", core.Guard(ws.MODES["simulated"]["dispatch"], dc.find_devices, audit))
     for state in (ws.ALERT_LOG, ws._down_alert, ws._down_since, ws._finding_open, ws._last_sim_status):
         state.clear()
     dc._invalidate_dashboard_cache()
