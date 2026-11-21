@@ -17,21 +17,23 @@ from pathlib import Path
 from urllib.parse import urlparse, urlencode
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from groq import Groq
 
 import agent_core as core
 import backends
+from clients import LazyGroqClient
+from settings import Settings
 import device_control as dc
 import network_scanner as ns
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 
-client = Groq(api_key=os.environ["GROQ_API_KEY"])
-MODEL = "openai/gpt-oss-120b"
+settings = Settings.from_env()
+client = LazyGroqClient(settings.groq_api_key)   # built on first use, not at import
+MODEL = settings.model
 
 # ---------------------------------------------------------------------------
 # ADDED — Telegram notifications (doctor requirement: "Send alert and
@@ -621,10 +623,9 @@ async def _lifespan(_app):
     yield
 
 
-app = FastAPI(lifespan=_lifespan)
+router = APIRouter()
 
 
-@app.middleware("http")
 async def same_origin_only(request: Request, call_next):
     """The dashboard and the API are served by this one app, so no other website has any
     business calling it. A browser tags cross-site requests with an Origin header that
@@ -643,7 +644,7 @@ class ChatRequest(BaseModel):
     message: str
     mode: str = "simulated"  # "simulated" or "real"
 
-@app.post("/api/chat")
+@router.post("/api/chat")
 def chat(req: ChatRequest):
     mode = req.mode if req.mode in MODES else "simulated"
     config = MODES[mode]
@@ -668,7 +669,7 @@ class ConfirmRequest(BaseModel):
     acknowledge_protected: bool = False
 
 
-@app.post("/api/confirm")
+@router.post("/api/confirm")
 def api_confirm(req: ConfirmRequest):
     """User-side confirmation of a destructive action. Only this endpoint (never
     the model) can execute a pending action."""
@@ -683,7 +684,7 @@ def api_confirm(req: ConfirmRequest):
     return out
 
 
-@app.get("/api/pending")
+@router.get("/api/pending")
 def api_pending():
     return GUARDS["simulated"].list_pending()
 
@@ -721,7 +722,7 @@ def _action_trail():
     return out
 
 
-@app.get("/api/report")
+@router.get("/api/report")
 def api_report():
     """One-page security and reliability summary for the Reports view (simulated lab)."""
     devices = dc.list_devices_dashboard()
@@ -749,13 +750,13 @@ def api_report():
     }
 
 
-@app.get("/api/audit")
+@router.get("/api/audit")
 def api_audit():
     """Audit log of every tool call: who, what, arguments, result, when."""
     return AUDIT_LOG.list()
 
 
-@app.post("/api/notify-test")
+@router.post("/api/notify-test")
 def api_notify_test():
     """ADDED — manual test button for the Telegram integration (doctor's
     acceptance criterion: 'a test alert reaches a configured destination')."""
@@ -778,7 +779,7 @@ class PowerRequest(BaseModel):
     state: str  # "on" or "off"
 
 
-@app.get("/api/devices")
+@router.get("/api/devices")
 def api_devices():
     """Live device list for the Dashboard (simulated lab), from registry.json + Docker."""
     devices = dc.list_devices_dashboard()
@@ -786,7 +787,7 @@ def api_devices():
     return devices
 
 
-@app.get("/api/alerts")
+@router.get("/api/alerts")
 def api_alerts():
     """Alert history for the Dashboard (simulated lab), newest first."""
     _track_sim_status(dc.list_devices_dashboard())
@@ -795,13 +796,13 @@ def api_alerts():
         return [dict(a) for a in ALERT_LOG]
 
 
-@app.get("/api/logs")
+@router.get("/api/logs")
 def api_logs():
     """Audit trail for the Logs page (simulated lab): what was asked, by whom, and the outcome."""
     return _action_trail()
 
 
-@app.post("/api/devices/{device_id}/power")
+@router.post("/api/devices/{device_id}/power")
 def api_power(device_id: str, req: PowerRequest):
     """Powers a simulated-lab device on/off. Power-on runs immediately; power-off
     only creates a pending action that must be confirmed via /api/confirm."""
@@ -813,7 +814,7 @@ def api_power(device_id: str, req: PowerRequest):
     return {"error": "state must be 'on' or 'off'"}
 
 
-@app.get("/api/real-devices")
+@router.get("/api/real-devices")
 def api_real_devices():
     """Live devices on the real physical LAN (ARP/mDNS scan), shaped like /api/devices."""
     raw = ns.list_devices()
@@ -833,16 +834,25 @@ def api_real_devices():
     return shaped
 
 
-@app.get("/api/real-alerts")
+@router.get("/api/real-alerts")
 def api_real_alerts():
     """Real-network mode is read-only monitoring, so no alerts yet."""
     return []
 
 
-@app.get("/api/real-logs")
+@router.get("/api/real-logs")
 def api_real_logs():
     """ADDED — Device appear/disappear history for the Logs page (real network)."""
     return REAL_EVENT_LOG
 
 
-app.mount("/", StaticFiles(directory=Path(__file__).parent / "web", html=True), name="web")
+def create_app():
+    """Build the FastAPI application. Nothing here talks to Docker or Groq."""
+    application = FastAPI(lifespan=_lifespan)
+    application.middleware("http")(same_origin_only)
+    application.include_router(router)
+    application.mount("/", StaticFiles(directory=Path(__file__).parent / "web", html=True), name="web")
+    return application
+
+
+app = create_app()
