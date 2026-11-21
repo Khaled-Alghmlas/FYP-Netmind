@@ -21,5 +21,5 @@ jobs:
         run: playwright install --with-deps chromium
       - name: Lint (ruff)
         run: ruff check .
-      - name: Unit tests (pytest)
-        run: pytest -q
+      - name: Unit tests (pytest) with coverage
+        run: pytest -q --cov=agent --cov-report=term-missing --cov-fail-under=70

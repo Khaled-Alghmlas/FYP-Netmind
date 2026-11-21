@@ -19,3 +19,7 @@ topology/registry.json
 
 # Runtime audit log
 logs/
+
+# coverage reports
+.coverage
+htmlcov/
