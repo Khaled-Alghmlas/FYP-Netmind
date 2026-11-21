@@ -46,6 +46,7 @@ def base_url(monkeypatch):
     monkeypatch.setattr(dc, "_reconnect_after_start", lambda _id: None)
     monkeypatch.setattr(dc, "_cached_audit", lambda fw: {"findings": ["Port 22 (SSH) is open"]})
     monkeypatch.setattr(ws, "ALERTS_PATH", None)
+    monkeypatch.setattr(ws, "TELEGRAM_BOT_TOKEN", None)   # tests must not send real Telegram messages
     audit = core.AuditLog()
     monkeypatch.setattr(ws, "AUDIT_LOG", audit)
     monkeypatch.setitem(ws.GUARDS, "simulated", core.Guard(ws.MODES["simulated"]["dispatch"], dc.find_devices, audit))
