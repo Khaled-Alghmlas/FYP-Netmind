@@ -185,10 +185,11 @@ class Guard:
     and only an explicit confirm() from the user (via the UI / REST API, never
     via the model) runs it."""
 
-    def __init__(self, dispatch, resolver, audit, clock=time.time):
+    def __init__(self, dispatch, resolver, audit, clock=time.time, supports=None):
         self.dispatch = dispatch      # tool name -> callable
         self.resolver = resolver      # name_or_owner -> [device dicts]
         self.audit = audit
+        self.supports = supports      # optional tool -> bool; False = the backend lacks that capability
         self._pending = {}
         self._lock = threading.Lock()
         self._clock = clock
@@ -230,6 +231,18 @@ class Guard:
         if fn is None:
             result = {"error": f"Unknown tool '{tool}'."}
             self.audit.record(actor, tool, args, result, "error")
+            return result
+
+        if self.supports is not None and not self.supports(tool):
+            # Capability enforced in code (e.g. power tools on the real LAN). The backend's own
+            # CapabilityError supplies the message, so it names the missing capability.
+            try:
+                fn(**args)
+            except Exception as e:  # noqa: BLE001 - CapabilityError by design
+                result = {"error": str(e)}
+            else:
+                result = {"error": f"'{tool}' is not allowed on this network."}
+            self.audit.record(actor, tool, args, result, "denied")
             return result
 
         if tool not in DESTRUCTIVE_TOOLS:

@@ -24,8 +24,8 @@ from pydantic import BaseModel
 from groq import Groq
 
 import agent_core as core
+import backends
 import device_control as dc
-import lab_network
 import network_scanner as ns
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
@@ -357,26 +357,6 @@ SIMULATED_TOOLS = [
     },
 ]
 
-SIMULATED_DISPATCH = {
-    "get_status": dc.get_status,
-    "get_ip": dc.get_ip,
-    "power_on": dc.power_on,
-    "power_off": dc.power_off,
-    "list_devices": dc.list_devices,
-    "list_devices_on_segment": dc.list_devices_on_segment,
-    "ping_between": lab_network.ping_between,
-    "list_firewall_rules": dc.list_firewall_rules,
-    "get_open_ports": dc.get_open_ports,
-    "audit_firewall": dc.audit_firewall,
-    "block_port": dc.block_port,
-    "allow_port": dc.allow_port,
-    "get_camera_stream_status": dc.get_camera_stream_status,
-    "start_camera_stream": dc.start_camera_stream,
-    "stop_camera_stream": dc.stop_camera_stream,
-    "check_camera_credentials": dc.check_camera_credentials,
-    "change_camera_credentials": dc.change_camera_credentials,
-}
-
 SIMULATED_PROMPT = (
     "You are NetMind, a network operations assistant for a SIMULATED lab network "
     "(built with containerlab). Use the provided tools to answer questions about "
@@ -396,51 +376,6 @@ SIMULATED_PROMPT = (
 # ---------------------------------------------------------------------------
 # REAL network tools — discovery/status only, no power control
 # ---------------------------------------------------------------------------
-REAL_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "list_devices",
-            "description": "Scan the real local network and list every device currently online, with its IP and MAC address.",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_status",
-            "description": "Check whether a specific real device (by IP or hostname) is currently online or offline.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name_or_owner": {"type": "string", "description": "IP address or hostname of the device"}
-                },
-                "required": ["name_or_owner"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_ip",
-            "description": "Resolve the IP address of a real device by hostname.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name_or_owner": {"type": "string", "description": "Hostname to resolve"}
-                },
-                "required": ["name_or_owner"],
-            },
-        },
-    },
-]
-
-REAL_DISPATCH = {
-    "list_devices": lambda: ns.list_devices(),
-    "get_status": lambda name_or_owner: ns.get_status(name_or_owner),
-    "get_ip": lambda name_or_owner: ns.get_ip(name_or_owner),
-}
-
 REAL_PROMPT = (
     "You are NetMind, a network operations assistant for a REAL local network. "
     "You can only discover devices and check whether they are online or offline — "
@@ -470,15 +405,22 @@ COMMON_PROMPT_SUFFIX = (
     "to network-related tasks — do not answer the unrelated question."
 )
 
+# One backend per mode. What each mode may do is enforced in backends.py (code
+# level), not only by the prompt: the real-LAN backend has no power capability.
+BACKENDS = {
+    "simulated": backends.ContainerlabBackend(),
+    "real": backends.RealLanBackend(),
+}
+
 MODES = {
     "simulated": {
-        "tools": SIMULATED_TOOLS,
-        "dispatch": SIMULATED_DISPATCH,
+        "tools": BACKENDS["simulated"].tools(SIMULATED_TOOLS),
+        "dispatch": BACKENDS["simulated"].dispatch(),
         "system_prompt": SIMULATED_PROMPT + COMMON_PROMPT_SUFFIX,
     },
     "real": {
-        "tools": REAL_TOOLS,
-        "dispatch": REAL_DISPATCH,
+        "tools": BACKENDS["real"].tools(SIMULATED_TOOLS),
+        "dispatch": BACKENDS["real"].dispatch(),
         "system_prompt": REAL_PROMPT + COMMON_PROMPT_SUFFIX,
     },
 }
@@ -490,8 +432,9 @@ SESSIONS = core.SessionStore()
 # guard that requires confirmation for destructive tools.
 AUDIT_LOG = core.AuditLog(path=Path(__file__).resolve().parent.parent / "logs" / "audit.jsonl")
 GUARDS = {
-    "simulated": core.Guard(SIMULATED_DISPATCH, dc.find_devices, AUDIT_LOG),
-    "real": core.Guard(REAL_DISPATCH, lambda name: [], AUDIT_LOG),
+    mode: core.Guard(MODES[mode]["dispatch"], BACKENDS[mode].resolve, AUDIT_LOG,
+                     supports=BACKENDS[mode].supports)
+    for mode in MODES
 }
 
 # ============================================================================
