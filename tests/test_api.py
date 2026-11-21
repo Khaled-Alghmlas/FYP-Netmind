@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import agent_core as core
+from llm import ChatCompletionsProvider
 import web_server as ws
 
 
@@ -20,7 +21,7 @@ def api(monkeypatch):
     def create(**kwargs):
         return NS(choices=[NS(message=scripted.pop(0))])
 
-    monkeypatch.setattr(ws, "client", NS(chat=NS(completions=NS(create=create))))
+    monkeypatch.setattr(ws, "provider", ChatCompletionsProvider(NS(chat=NS(completions=NS(create=create))), "test"))
     monkeypatch.setattr(ws, "SESSIONS", core.SessionStore())
     audit = core.AuditLog()
     monkeypatch.setattr(ws, "AUDIT_LOG", audit)

@@ -84,7 +84,9 @@ def test_real_mode_through_the_chat_api_cannot_power_off(monkeypatch):
         NS(content=None, tool_calls=[NS(id="c0", function=NS(name="power_off", arguments='{"name_or_owner": "192.168.1.5"}'))]),
         NS(content="I can't do that on a real network.", tool_calls=None),
     ]
-    monkeypatch.setattr(ws, "client", NS(chat=NS(completions=NS(create=lambda **k: NS(choices=[NS(message=scripted.pop(0))])))))
+    from llm import ChatCompletionsProvider
+    fake = NS(chat=NS(completions=NS(create=lambda **k: NS(choices=[NS(message=scripted.pop(0))]))))
+    monkeypatch.setattr(ws, "provider", ChatCompletionsProvider(fake, "test"))
     monkeypatch.setattr(ws, "SESSIONS", core.SessionStore())
     monkeypatch.setattr(ws.GUARDS["real"], "audit", core.AuditLog())   # keep logs/audit.jsonl untouched
     body = TestClient(ws.app).post("/api/chat", json={"session_id": "s", "message": "turn off 192.168.1.5", "mode": "real"}).json()

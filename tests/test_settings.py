@@ -40,7 +40,7 @@ def test_lazy_client_without_a_key_fails_only_when_used():
 
 def test_web_server_imports_without_an_api_key_or_docker():
     code = (f"import sys; sys.path.insert(0, {str(AGENT_DIR)!r}); "
-            "import web_server; print('imported', web_server.client._real is None)")
+            "import web_server; print('imported', web_server.provider._client._real is None)")
     env = {**os.environ, "GROQ_API_KEY": ""}      # python-dotenv never overrides a variable that is set
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, timeout=120)
     assert r.returncode == 0, r.stderr[-600:]

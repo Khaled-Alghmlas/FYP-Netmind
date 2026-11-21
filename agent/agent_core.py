@@ -13,6 +13,8 @@ import uuid
 from collections import deque
 from pathlib import Path
 
+from tool_catalog import registry
+
 # ---------------------------------------------------------------------------
 # Settings
 # ---------------------------------------------------------------------------
@@ -22,14 +24,10 @@ MAX_HISTORY_MESSAGES = 40              # system prompt + the most recent N messa
 MAX_SESSIONS = 200                     # hard cap so memory cannot grow without bound
 PENDING_TTL_SECONDS = 5 * 60           # a confirmation request expires after 5 minutes
 
-# Tools that change state and therefore need explicit user confirmation.
-# Maps tool name -> name of the argument that identifies the target device(s).
-DESTRUCTIVE_TOOLS = {
-    "power_off": "name_or_owner",
-    "block_port": "fw_id",
-    "allow_port": "fw_id",
-    "change_camera_credentials": "cam_id",
-}
+# Tools that need explicit user confirmation, read live from the tool registry: tool name ->
+# the argument that identifies the target device(s). A tool is destructive by being
+# registered with risk=Risk.DESTRUCTIVE in tool_catalog.py; there is no second list.
+DESTRUCTIVE_TOOLS = registry.confirmation_targets()
 
 # Device ids that are always protected, in addition to every device whose
 # registry type is "firewall" or "router".
@@ -391,10 +389,11 @@ def partial_summary(steps, rounds):
     return "\n".join(lines)
 
 
-def run_query(client, model, user_input, history, tools, call_tool, steps=None,
+def run_query(provider, user_input, history, tools, call_tool, steps=None,
               max_rounds=MAX_ROUNDS, max_retries=1):
     """Run one user turn.
 
+    provider is an llm.LLMProvider: provider.complete(history, tools) -> assistant message.
     call_tool(name, args) -> result executes (or guards) a tool call.
     `steps`, when given, receives every executed call as {"tool","args","result"}.
     Always returns a string; never raises on bad model output.
@@ -405,13 +404,10 @@ def run_query(client, model, user_input, history, tools, call_tool, steps=None,
 
     for _ in range(max_rounds):
         try:
-            response = client.chat.completions.create(
-                model=model, messages=history, tools=tools, tool_choice="auto",
-            )
+            msg = provider.complete(history, tools)
         except Exception as e:  # noqa: BLE001
             return f"Sorry, I hit an error talking to the model: {e}"
 
-        msg = response.choices[0].message
         history.append(msg_to_dict(msg))
 
         if not msg.tool_calls:

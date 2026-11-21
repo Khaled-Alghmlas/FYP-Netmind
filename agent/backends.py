@@ -12,39 +12,12 @@ client lazily).
 from abc import ABC, abstractmethod
 
 import device_control as dc
-import lab_network
 import network_scanner as ns
+from tool_catalog import registry
+from tools import Cap
 
-
-class Cap:
-    INVENTORY = "inventory"      # list devices, status, address lookup
-    SEGMENTS = "segments"        # which devices sit behind a switch/hub
-    DIAGNOSTICS = "diagnostics"  # ping between devices
-    POWER = "power"              # power devices on/off
-    FIREWALL = "firewall"        # read and change firewall rules
-    CAMERA = "camera"            # camera stream and credentials
-
-
-# Which capability each tool needs. A tool missing from this map is refused.
-TOOL_CAPABILITY = {
-    "get_status": Cap.INVENTORY,
-    "get_ip": Cap.INVENTORY,
-    "list_devices": Cap.INVENTORY,
-    "list_devices_on_segment": Cap.SEGMENTS,
-    "ping_between": Cap.DIAGNOSTICS,
-    "power_on": Cap.POWER,
-    "power_off": Cap.POWER,
-    "list_firewall_rules": Cap.FIREWALL,
-    "get_open_ports": Cap.FIREWALL,
-    "audit_firewall": Cap.FIREWALL,
-    "block_port": Cap.FIREWALL,
-    "allow_port": Cap.FIREWALL,
-    "get_camera_stream_status": Cap.CAMERA,
-    "start_camera_stream": Cap.CAMERA,
-    "stop_camera_stream": Cap.CAMERA,
-    "check_camera_credentials": Cap.CAMERA,
-    "change_camera_credentials": Cap.CAMERA,
-}
+# Snapshot of which capability each tool needs. The backends below read the registry live.
+TOOL_CAPABILITY = registry.capability_map()
 
 
 class CapabilityError(Exception):
@@ -52,7 +25,7 @@ class CapabilityError(Exception):
 
 
 def _refuse(backend_name, tool):
-    needed = TOOL_CAPABILITY.get(tool)
+    needed = registry.capability_map().get(tool)
     if needed is None:
         raise CapabilityError(f"'{tool}' is not a known tool.")
     raise CapabilityError(
@@ -74,7 +47,7 @@ class NetworkBackend(ABC):
 
     # -- capability checks ---------------------------------------------------
     def supports(self, tool):
-        return TOOL_CAPABILITY.get(tool) in self.capabilities
+        return registry.capability_map().get(tool) in self.capabilities
 
     def call(self, tool, **args):
         if not self.supports(tool):
@@ -87,7 +60,7 @@ class NetworkBackend(ABC):
         explicit (and audited) rather than a silent 'unknown tool'."""
         impls = self.implementations()
         table = {}
-        for tool in TOOL_CAPABILITY:
+        for tool in registry.capability_map():
             if self.supports(tool) and tool in impls:
                 table[tool] = impls[tool]
             else:
@@ -99,8 +72,11 @@ class NetworkBackend(ABC):
             _refuse(self.name, tool)
         return blocked
 
-    def tools(self, shared_schemas):
-        """The tool schemas the model is shown: only those this backend supports."""
+    def tools(self, shared_schemas=None):
+        """The tool schemas the model is shown: only those this backend supports.
+        By default they come from the tool registry."""
+        if shared_schemas is None:
+            shared_schemas = registry.schemas()
         overrides = self.tool_overrides()
         out = []
         for schema in shared_schemas:
@@ -121,25 +97,7 @@ class ContainerlabBackend(NetworkBackend):
                               Cap.POWER, Cap.FIREWALL, Cap.CAMERA})
 
     def implementations(self):
-        return {
-            "get_status": dc.get_status,
-            "get_ip": dc.get_ip,
-            "list_devices": dc.list_devices,
-            "list_devices_on_segment": dc.list_devices_on_segment,
-            "ping_between": lab_network.ping_between,
-            "power_on": dc.power_on,
-            "power_off": dc.power_off,
-            "list_firewall_rules": dc.list_firewall_rules,
-            "get_open_ports": dc.get_open_ports,
-            "audit_firewall": dc.audit_firewall,
-            "block_port": dc.block_port,
-            "allow_port": dc.allow_port,
-            "get_camera_stream_status": dc.get_camera_stream_status,
-            "start_camera_stream": dc.start_camera_stream,
-            "stop_camera_stream": dc.stop_camera_stream,
-            "check_camera_credentials": dc.check_camera_credentials,
-            "change_camera_credentials": dc.change_camera_credentials,
-        }
+        return registry.implementations()
 
     def resolve(self, name_or_owner):
         return dc.find_devices(name_or_owner)

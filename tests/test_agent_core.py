@@ -2,6 +2,7 @@ import json
 from types import SimpleNamespace as NS
 
 import agent_core as core
+from llm import ChatCompletionsProvider
 
 
 def make_msg(content=None, calls=()):
@@ -26,7 +27,7 @@ class FakeClient:
 
 def run(client, call_tool, steps=None, max_rounds=5):
     history = [{"role": "system", "content": "sys"}]
-    reply = core.run_query(client, "m", "hi", history, [], call_tool, steps=steps, max_rounds=max_rounds)
+    reply = core.run_query(ChatCompletionsProvider(client, "m"), "hi", history, [], call_tool, steps=steps, max_rounds=max_rounds)
     return reply, history
 
 
@@ -214,7 +215,7 @@ DESTRUCTIVE_TOOLS_SCHEMA = [{"function": {"name": n}} for n in
 def run_with_tools(client, call_tool, user_input, tools):
     history = [{"role": "system", "content": "sys"}]
     steps = []
-    reply = core.run_query(client, "m", user_input, history, tools, call_tool, steps=steps)
+    reply = core.run_query(ChatCompletionsProvider(client, "m"), user_input, history, tools, call_tool, steps=steps)
     return reply, steps, history
 
 

@@ -24,16 +24,16 @@ from pydantic import BaseModel
 
 import agent_core as core
 import backends
-from clients import LazyGroqClient
+from llm import GroqProvider
 from settings import Settings
 import device_control as dc
 import network_scanner as ns
+from tool_catalog import registry
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 
 settings = Settings.from_env()
-client = LazyGroqClient(settings.groq_api_key)   # built on first use, not at import
-MODEL = settings.model
+provider = GroqProvider(settings.groq_api_key, settings.model)   # connects on first use, not at import
 
 # ---------------------------------------------------------------------------
 # ADDED — Telegram notifications (doctor requirement: "Send alert and
@@ -115,249 +115,8 @@ def _notify_telegram_event(entry, network="Real Network"):
     _send_telegram(text)
 
 # ---------------------------------------------------------------------------
-# SIMULATED (containerlab) tools — unchanged, full control
+# Prompts. The tools themselves (schemas, risk, capability) are registered in tool_catalog.py.
 # ---------------------------------------------------------------------------
-SIMULATED_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_status",
-            "description": "Check whether a device (or all devices belonging to an owner) is on or off.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name_or_owner": {"type": "string", "description": "Device id (e.g. 'host-ahmed') or owner name (e.g. 'ahmed')"}
-                },
-                "required": ["name_or_owner"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_ip",
-            "description": "Get the IP address of a device (or all devices belonging to an owner).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name_or_owner": {"type": "string", "description": "Device id or owner name"}
-                },
-                "required": ["name_or_owner"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "power_on",
-            "description": "Turn on a device or all devices belonging to an owner.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name_or_owner": {"type": "string", "description": "Device id or owner name"}
-                },
-                "required": ["name_or_owner"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "power_off",
-            "description": "Turn off / shut down a device or all devices belonging to an owner.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name_or_owner": {"type": "string", "description": "Device id or owner name"}
-                },
-                "required": ["name_or_owner"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "list_devices",
-            "description": "List every device in the network with its owner, type, and on/off status.",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "ping_between",
-            "description": "Ping from one lab device to another over the lab (data-plane) network to check whether the link between them works. Read-only. Use it to verify connectivity, for example after a device was powered off and on. src and dst are device ids; each must match exactly one device.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "src": {"type": "string", "description": "Source device id, e.g. 'host-khalid'"},
-                    "dst": {"type": "string", "description": "Destination device id, e.g. 'host-khalil'"},
-                    "count": {"type": "integer", "description": "Number of pings, 1-5 (default 3)"}
-                },
-                "required": ["src", "dst"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "list_devices_on_segment",
-            "description": "List every device connected to a given switch or hub segment (e.g. 'switch-branch1', 'hub-branch2', 'switch-branch3'). Note: switches/hubs are plain network bridges, not controllable devices themselves.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "segment_id": {"type": "string", "description": "Segment name, e.g. 'switch-branch1'"}
-                },
-                "required": ["segment_id"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "list_firewall_rules",
-            "description": "List the raw firewall rules configured on a firewall device (e.g. fw-branch1).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "fw_id": {"type": "string", "description": "Firewall device id, e.g. 'fw-branch1'"}
-                },
-                "required": ["fw_id"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_open_ports",
-            "description": "Get which ports are currently open (allowed through) on a firewall device.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "fw_id": {"type": "string", "description": "Firewall device id, e.g. 'fw-branch1'"}
-                },
-                "required": ["fw_id"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "audit_firewall",
-            "description": "Audit a firewall for common security issues, e.g. sensitive ports (SSH, Telnet, FTP, RDP) left open to any source.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "fw_id": {"type": "string", "description": "Firewall device id, e.g. 'fw-branch1'"}
-                },
-                "required": ["fw_id"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "block_port",
-            "description": "Block a port on a firewall device, closing it to all traffic.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "fw_id": {"type": "string", "description": "Firewall device id, e.g. 'fw-branch1'"},
-                    "port": {"type": "integer", "description": "Port number to block, e.g. 22"},
-                    "protocol": {"type": "string", "description": "Protocol, defaults to 'tcp'"}
-                },
-                "required": ["fw_id", "port"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "allow_port",
-            "description": "Allow a port on a firewall device, opening it to traffic.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "fw_id": {"type": "string", "description": "Firewall device id, e.g. 'fw-branch1'"},
-                    "port": {"type": "integer", "description": "Port number to allow, e.g. 22"},
-                    "protocol": {"type": "string", "description": "Protocol, defaults to 'tcp'"}
-                },
-                "required": ["fw_id", "port"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_camera_stream_status",
-            "description": "Check whether a camera's video stream service is actually reachable and responding (separate from whether the container itself is powered on).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "cam_id": {"type": "string", "description": "Camera device id, e.g. 'cam-khalid'"}
-                },
-                "required": ["cam_id"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "start_camera_stream",
-            "description": "Start a camera's video stream service, without affecting the container's power state.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "cam_id": {"type": "string", "description": "Camera device id, e.g. 'cam-khalid'"}
-                },
-                "required": ["cam_id"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "stop_camera_stream",
-            "description": "Stop a camera's video stream service, without powering off the container.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "cam_id": {"type": "string", "description": "Camera device id, e.g. 'cam-khalid'"}
-                },
-                "required": ["cam_id"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "check_camera_credentials",
-            "description": "Check whether a camera is still using its default (weak) password.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "cam_id": {"type": "string", "description": "Camera device id, e.g. 'cam-khalid'"}
-                },
-                "required": ["cam_id"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "change_camera_credentials",
-            "description": "Change a camera's password away from the default.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "cam_id": {"type": "string", "description": "Camera device id, e.g. 'cam-khalid'"},
-                    "new_password": {"type": "string", "description": "New password to set"}
-                },
-                "required": ["cam_id", "new_password"],
-            },
-        },
-    },
-]
 
 SIMULATED_PROMPT = (
     "You are NetMind, a network operations assistant for a SIMULATED lab network "
@@ -416,12 +175,12 @@ BACKENDS = {
 
 MODES = {
     "simulated": {
-        "tools": BACKENDS["simulated"].tools(SIMULATED_TOOLS),
+        "tools": BACKENDS["simulated"].tools(),
         "dispatch": BACKENDS["simulated"].dispatch(),
         "system_prompt": SIMULATED_PROMPT + COMMON_PROMPT_SUFFIX,
     },
     "real": {
-        "tools": BACKENDS["real"].tools(SIMULATED_TOOLS),
+        "tools": BACKENDS["real"].tools(),
         "dispatch": BACKENDS["real"].dispatch(),
         "system_prompt": REAL_PROMPT + COMMON_PROMPT_SUFFIX,
     },
@@ -610,9 +369,9 @@ def _track_real_status(devices):
     return devices
 
 def run_query(user_input, history, tools, guard, actor, session_key, steps=None):
-    """Thin wrapper binding the Groq client + guard to agent_core.run_query."""
+    """Thin wrapper binding the LLM provider + guard to agent_core.run_query."""
     return core.run_query(
-        client, MODEL, user_input, history, tools,
+        provider, user_input, history, tools,
         call_tool=lambda name, args: guard.call(name, args, actor, session_key),
         steps=steps,
     )
@@ -689,7 +448,7 @@ def api_pending():
     return GUARDS["simulated"].list_pending()
 
 
-ACTION_TOOLS = set(core.DESTRUCTIVE_TOOLS) | {"power_on", "start_camera_stream", "stop_camera_stream"}
+ACTION_TOOLS = registry.action_names()   # every tool that is not read-only
 
 
 def _who(actor):
