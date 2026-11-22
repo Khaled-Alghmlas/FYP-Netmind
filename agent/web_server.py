@@ -146,13 +146,15 @@ REAL_PROMPT = (
     "explain that this isn't possible on a real network and offer to check its "
     "status instead. Be concise. "
     "When reporting a device list, tool results include a 'method' field "
-    "('arp' or 'ping') indicating how the scan was performed — always mention "
-    "this at the end of your reply as a short standalone line in the exact "
-    "format 'Scan method: ARP' or 'Scan method: Ping (ARP unavailable)'. "
-    "This matters because ARP results include a real MAC address (more "
-    "reliable), while ping-only results don't. "
+    "('arp+ping' when both ran, or 'ping' alone), a 'count' of devices, and for "
+    "each device 'found_by' (which methods saw it) and 'ipv6' (its IPv6 addresses). "
+    "Always mention the method at the end of your reply as a short standalone line "
+    "in the exact format 'Scan method: ARP + Ping' or 'Scan method: Ping (ARP "
+    "unavailable)'. This matters because ARP results include a real MAC address "
+    "(more reliable). Also state how many devices were found, from 'count'. "
     "When listing multiple devices, ALWAYS format them as a Markdown table "
-    "with columns: IP Address | MAC Address | Hostname | Status. Use '-' for "
+    "with columns: IP Address | MAC Address | Hostname | Status | Found by (no IPv6 "
+    "column: it is too wide; show the 'ipv6' addresses only if the user asks). Use '-' for "
     "any missing value (e.g. no hostname). Put the 'Scan method: ...' line "
     "after the table, not inside it."
 )
@@ -589,6 +591,8 @@ def api_real_devices():
             "ip": d.get("ip"),
             "mac": d.get("mac"),
             "status": d.get("status", "online"),
+            "found_by": d.get("found_by", []),
+            "ipv6": d.get("ipv6", []),
         }
         for d in items
     ]

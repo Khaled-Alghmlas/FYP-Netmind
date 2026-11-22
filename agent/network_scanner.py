@@ -24,12 +24,19 @@ Fixes applied per review (#6):
     default route at all.
   - The result now reports which discovery method actually ran ("arp" or
     "ping"), instead of failing over silently.
+
+Merged scan (#32): ARP, a ping sweep, mDNS and an IPv6 multicast probe run at the
+same time. Each device is reported once, with `found_by` (which methods saw it),
+its MAC (also taken from the kernel neighbour table for ping-only hosts) and
+the IPv6 addresses that belong to the same MAC. If ARP is not possible (no raw
+socket permission) the others still run, so one failing method never hides the
+rest.
 """
 import subprocess
 import socket
 import ipaddress
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 try:
     from scapy.all import ARP, Ether, srp
@@ -48,17 +55,19 @@ except ImportError:
 # Result caching — makes repeated calls fast (acceptance criteria)
 # ---------------------------------------------------------------------------
 _CACHE_TTL_SECONDS = 20
-_cache = {"result": None, "timestamp": 0}
+_cache = {"result": None, "timestamp": 0, "subnet": None}
 
 
-def _cache_get():
-    if _cache["result"] is not None and (time.time() - _cache["timestamp"]) < _CACHE_TTL_SECONDS:
+def _cache_get(subnet):
+    if (_cache["result"] is not None and _cache["subnet"] == subnet
+            and (time.time() - _cache["timestamp"]) < _CACHE_TTL_SECONDS):
         return _cache["result"]
     return None
 
 
-def _cache_set(result):
+def _cache_set(subnet, result):
     _cache["result"] = result
+    _cache["subnet"] = subnet
     _cache["timestamp"] = time.time()
 
 
@@ -183,46 +192,18 @@ def _resolve_hostname(ip, mdns_results):
 
 
 # ---------------------------------------------------------------------------
-# Network scanning — reports which method actually ran
+# The individual discovery methods. Each one returns None when it cannot run
+# at all, so the merge can tell "found nothing" apart from "could not look".
 # ---------------------------------------------------------------------------
-def scan_network(subnet=None, use_cache=True):
-    if use_cache:
-        cached = _cache_get()
-        if cached is not None:
-            return cached
-
-    subnet = subnet or get_local_subnet()
-    mdns_results = _mdns_scan()
-
+def _arp_scan(subnet):
+    """[{ip, mac}] from an ARP broadcast, or None (no scapy / no raw-socket permission)."""
     if not HAS_SCAPY:
-        result = _scan_network_ping_fallback(subnet, mdns_results)
-        _cache_set(result)
-        return result
-
+        return None
     try:
-        arp = ARP(pdst=subnet)
-        ether = Ether(dst="ff:ff:ff:ff:ff:ff")
-        packet = ether / arp
-        answered = srp(packet, timeout=3, verbose=False)[0]
-
-        devices = []
-        for _, received in answered:
-            devices.append({
-                "ip": received.psrc,
-                "mac": received.hwsrc,
-                "hostname": _resolve_hostname(received.psrc, mdns_results),
-                "status": "online",
-            })
-        result = {
-            "method": "arp",
-            "devices": sorted(devices, key=lambda d: tuple(int(x) for x in d["ip"].split("."))),
-        }
+        answered = srp(Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=subnet), timeout=3, verbose=False)[0]
     except (PermissionError, OSError):
-        # No CAP_NET_RAW / not running as root — ARP needs raw sockets
-        result = _scan_network_ping_fallback(subnet, mdns_results)
-
-    _cache_set(result)
-    return result
+        return None
+    return [{"ip": received.psrc, "mac": received.hwsrc.lower()} for _, received in answered]
 
 
 def _ping_once(ip):
@@ -236,25 +217,126 @@ def _ping_once(ip):
         return False
 
 
-def _scan_network_ping_fallback(subnet, mdns_results=None):
-    mdns_results = mdns_results or {}
+def _ping_sweep(subnet):
+    """IPs that answered a ping."""
     network = ipaddress.ip_network(subnet, strict=False)
-    devices = []
+    alive = []
     with ThreadPoolExecutor(max_workers=64) as pool:
-        futures = {pool.submit(_ping_once, ip): ip for ip in network.hosts()}
-        for future in as_completed(futures):
-            ip = futures[future]
-            if future.result():
-                devices.append({
-                    "ip": str(ip),
-                    "mac": None,
-                    "hostname": _resolve_hostname(str(ip), mdns_results),
-                    "status": "online",
-                })
-    return {
-        "method": "ping",
-        "devices": sorted(devices, key=lambda d: tuple(int(x) for x in d["ip"].split("."))),
+        for ip, ok in zip(network.hosts(), pool.map(_ping_once, network.hosts())):
+            if ok:
+                alive.append(str(ip))
+    return alive
+
+
+def _default_interface():
+    try:
+        out = subprocess.run(["ip", "-4", "route", "show", "default"],
+                             capture_output=True, text=True, timeout=2).stdout
+        parts = out.split()
+        return parts[parts.index("dev") + 1] if "dev" in parts else None
+    except Exception:
+        return None
+
+
+def _ndp_probe():
+    """Ping the IPv6 all-nodes address so IPv6 neighbours show up in the kernel table."""
+    iface = _default_interface()
+    if not iface:
+        return None
+    try:
+        subprocess.run(["ping", "-6", "-c", "2", "-W", "1", "-I", iface, "ff02::1"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=6)
+    except Exception:
+        return None
+    return True
+
+
+def _neighbor_table():
+    """[{ip, mac}] (IPv4 and IPv6) from the kernel neighbour table (`ip neigh`)."""
+    try:
+        out = subprocess.run(["ip", "neigh", "show"], capture_output=True, text=True, timeout=3).stdout
+    except Exception:
+        return []
+    rows = []
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) < 3 or "lladdr" not in parts or parts[-1] in ("FAILED", "INCOMPLETE"):
+            continue
+        rows.append({"ip": parts[0], "mac": parts[parts.index("lladdr") + 1].lower()})
+    return rows
+
+
+def _outcome(future, default=None):
+    """A method that crashes counts as 'could not run', never as a failed scan."""
+    try:
+        return future.result()
+    except Exception:
+        return default
+
+
+# ---------------------------------------------------------------------------
+# Network scanning — all methods at once, merged per device
+# ---------------------------------------------------------------------------
+def scan_network(subnet=None, use_cache=True):
+    subnet = subnet or get_local_subnet()
+    if use_cache:
+        cached = _cache_get(subnet)
+        if cached is not None:
+            return cached
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        f_arp = pool.submit(_arp_scan, subnet)
+        f_ping = pool.submit(_ping_sweep, subnet)
+        f_mdns = pool.submit(_mdns_scan)
+        f_ndp = pool.submit(_ndp_probe)
+        arp, ping = _outcome(f_arp), _outcome(f_ping)
+        mdns_results = _outcome(f_mdns, {}) or {}
+        _outcome(f_ndp)
+
+    methods = [name for name, found in (("arp", arp), ("ping", ping)) if found is not None]
+
+    devices = {}
+
+    def add(ip, mac, via):
+        d = devices.setdefault(ip, {"ip": ip, "mac": None, "hostname": None, "status": "online",
+                                    "found_by": [], "ipv6": []})
+        if mac and not d["mac"]:
+            d["mac"] = mac
+        if via not in d["found_by"]:
+            d["found_by"].append(via)
+
+    for row in arp or []:
+        add(row["ip"], row["mac"], "arp")
+    for ip in ping or []:
+        add(ip, None, "ping")
+
+    # Ping-only hosts still have a MAC in the kernel table; IPv6 addresses are matched by MAC.
+    neighbors = _neighbor_table()
+    v4_mac = {r["ip"]: r["mac"] for r in neighbors if ":" not in r["ip"]}
+    v6_by_mac = {}
+    for r in neighbors:
+        if ":" in r["ip"]:
+            v6_by_mac.setdefault(r["mac"], []).append(r["ip"])
+    for d in devices.values():
+        d["mac"] = d["mac"] or v4_mac.get(d["ip"])
+        if d["mac"]:
+            d["ipv6"] = sorted(v6_by_mac.get(d["mac"], []))
+
+    ips = list(devices)
+    if ips:
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            for ip, name in zip(ips, pool.map(lambda x: _resolve_hostname(x, mdns_results), ips)):
+                devices[ip]["hostname"] = name
+
+    ordered = sorted(devices.values(), key=lambda d: ipaddress.ip_address(d["ip"]))
+    result = {
+        "method": "+".join(methods) or "none",
+        "methods": methods,
+        "count": len(ordered),
+        "devices": ordered,
     }
+    _cache_set(subnet, result)
+    return result
 
 
 def get_status(ip_or_hostname):
@@ -281,7 +363,8 @@ def get_ip(hostname):
 
 def list_devices():
     """List every device currently visible on the real LAN.
-    Returns {"method": "arp"|"ping", "devices": [...]}."""
+    Returns {"method": "arp+ping"|"ping", "methods": [...], "count": N, "devices": [...]};
+    each device has ip, mac, hostname, status, found_by and ipv6."""
     return scan_network()
 
 

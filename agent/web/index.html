@@ -822,6 +822,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
             typePhone: "Phone", typeLaptop: "Laptop / PC", typeRouter: "Router", typeFirewall: "Firewall",
             typeCamera: "Camera", typeSwitch: "Switch", typeServer: "Server", typeTv: "TV / Streaming",
             typeIot: "IoT device", typeApple: "Apple device", typeUnknown: "Unknown device",
+            foundBy: "Found by",
             netSimulated: "Simulated Lab", netReal: "Real Network",
             statDevices: "Devices", statHealth: "Network Health", statAlerts: "Active Alerts",
             statAlertsSub: "Requires attention",
@@ -906,6 +907,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
             typePhone: "جوال", typeLaptop: "لابتوب / PC", typeRouter: "راوتر", typeFirewall: "فايروول",
             typeCamera: "كاميرا", typeSwitch: "سويتش", typeServer: "سيرفر", typeTv: "تلفزيون / بث",
             typeIot: "جهاز IoT", typeApple: "جهاز Apple", typeUnknown: "جهاز غير معروف",
+            foundBy: "اكتُشف عبر",
             netSimulated: "شبكة محاكاة", netReal: "شبكة حقيقية",
             statDevices: "الأجهزة", statHealth: "صحة الشبكة", statAlerts: "تنبيهات نشطة",
             statAlertsSub: "تحتاج مراجعة",
@@ -1686,6 +1688,16 @@ body[data-net-mode="real"] .sim-only { display: none; }
                 card.className = "device-card" + (off ? " is-off" : "");
                 var metaLine = netMode === "real" ? (d.mac || "--") : (d.ip || "");
                 var vendorLine = info.vendor ? " · " + info.vendor : "";
+                // real network: which scan methods saw this device (IPv6 addresses in the tooltip)
+                var esc = function (t) {
+                    return String(t).replace(/[&<>"']/g, function (c) {
+                        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+                    });
+                };
+                var foundLine = (netMode === "real" && d.found_by && d.found_by.length)
+                    ? '<div class="device-meta" title="' + esc((d.ipv6 || []).join(", ")) + '">' +
+                      esc(s.foundBy) + ": " + esc(d.found_by.join(", ")) + "</div>"
+                    : "";
                 var canPower = netMode === "simulated" && d.type !== "router";
                 var isPending = !!(dashState.pending[d.id] || dashState.busy[d.id]);
                 var btn = canPower
@@ -1697,6 +1709,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
                     '<div class="device-info">' +
                         '<div class="device-name">' + (d.name || d.id || "--") + "</div>" +
                         '<div class="device-meta">' + metaLine + "</div>" +
+                        foundLine +
                         '<div class="device-type-label">' + info.label + vendorLine + "</div>" +
                     "</div>" +
                     '<div class="device-side"><span class="status ' + statusClass(d.status) + '">' + statusLabel(d.status) + "</span>" + btn + "</div>";
