@@ -21,6 +21,8 @@ import device_control as dc
 
 TOPOLOGY_FILE = Path(__file__).resolve().parent.parent / "topology" / "netmind-large.clab.yml"
 RECONNECTABLE_TYPES = ("host", "camera")  # leaf devices with a single bridge link
+HELPER = "/usr/local/sbin/netmind-reconnect"   # installed by `make setup-perms`
+_VETH_CREATE = ["containerlab", "tools", "veth", "create"]
 
 
 def _load_topology():
@@ -44,8 +46,16 @@ def _bridge_link(topo, device_id):
 
 
 def _as_root(cmd):
-    # `sudo -n` fails fast instead of waiting for a password nobody can type
-    return cmd if os.geteuid() == 0 else ["sudo", "-n"] + cmd
+    """Run `cmd` (a `containerlab tools veth create ...` command) with the privilege it needs.
+    - already root: as it is.
+    - the validating helper is installed (`make setup-perms`): sudo that one command, no password.
+    - otherwise plain `sudo -n`, which only works while a sudo ticket is fresh; `-n` fails fast
+      instead of waiting for a password nobody can type."""
+    if os.geteuid() == 0:
+        return cmd
+    if cmd[:4] == _VETH_CREATE and os.access(HELPER, os.X_OK):
+        return ["sudo", "-n", HELPER] + cmd[4:]
+    return ["sudo", "-n"] + cmd
 
 
 def _has_iface(container, iface):
@@ -115,7 +125,7 @@ def reconnect_device(device_id, veth_timeout="20s"):
         return {"id": device_id, "error": "veth create timed out"}
     if r.returncode != 0:
         return {"id": device_id,
-                "error": "veth create failed (the server must run as root / with sudo)",
+                "error": "veth create failed (the server needs permission: run 'make setup-perms' once, or start it as root)",
                 "detail": (r.stderr or r.stdout)[-300:]}
 
     container.exec_run(["ip", "link", "set", iface, "up"])

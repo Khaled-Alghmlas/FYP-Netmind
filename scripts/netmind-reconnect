@@ -1,0 +1,55 @@
+#!/bin/bash
+# netmind-reconnect: the ONE command the NetMind server may run as root (through sudo).
+#
+# It re-attaches a lab container to a host bridge after a power cycle, which is what
+# `containerlab tools veth create` does, and it refuses everything else. Installed by
+# scripts/setup-permissions.sh as /usr/local/sbin/netmind-reconnect, owned by root.
+#
+#   netmind-reconnect -a <container>:<ethN> -b bridge:<bridge>:<port> [--timeout <N>s]
+#   netmind-reconnect --check          exits 0: used to test that sudo works without a password
+#
+# Every argument is checked before anything runs: the container must be managed by containerlab,
+# the bridge must be an existing Linux bridge, and the names may contain only safe characters.
+set -euo pipefail
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+die() { echo "netmind-reconnect: $*" >&2; exit 2; }
+
+if [ "${1:-}" = "--check" ]; then
+    echo ok
+    exit 0
+fi
+
+a="" b="" timeout="20s"
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -a|-b|--timeout)
+            [ $# -ge 2 ] || die "missing value for $1"
+            case "$1" in
+                -a) a="$2" ;;
+                -b) b="$2" ;;
+                --timeout) timeout="$2" ;;
+            esac
+            shift 2 ;;
+        *) die "unexpected argument: $1" ;;
+    esac
+done
+
+[[ "$a" =~ ^([A-Za-z0-9][A-Za-z0-9_.-]{0,100}):(eth[0-9]{1,2})$ ]] || die "invalid -a (want <container>:<ethN>)"
+container="${BASH_REMATCH[1]}"
+iface="${BASH_REMATCH[2]}"
+[[ "$b" =~ ^bridge:([A-Za-z0-9_.-]{1,15}):([A-Za-z0-9_.-]{1,15})$ ]] || die "invalid -b (want bridge:<bridge>:<port>)"
+bridge="${BASH_REMATCH[1]}"
+port="${BASH_REMATCH[2]}"
+[[ "$timeout" =~ ^[0-9]{1,3}s$ ]] || die "invalid --timeout (want e.g. 20s)"
+
+# Only containers that containerlab itself created: they carry its label.
+label="$(docker inspect --format '{{ index .Config.Labels "containerlab" }}' "$container" 2>/dev/null || true)"
+[ -n "$label" ] || die "'$container' is not a containerlab container"
+
+# Only an existing Linux bridge (not any other interface).
+[ -d "/sys/class/net/$bridge/bridge" ] || die "'$bridge' is not a Linux bridge on this machine"
+
+clab="$(command -v containerlab || true)"
+[ -x "$clab" ] || die "containerlab is not installed"
+exec "$clab" tools veth create -a "$container:$iface" -b "bridge:$bridge:$port" --timeout "$timeout"

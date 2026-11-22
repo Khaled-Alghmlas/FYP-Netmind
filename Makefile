@@ -8,10 +8,15 @@ TOPO := netmind-large.clab.yml
 # Use the project venv automatically when it exists, so "make up" works even if it is not activated.
 PYTHON ?= $(if $(wildcard $(CURDIR)/.venv/bin/python),$(CURDIR)/.venv/bin/python,python3)
 
-.PHONY: help up down lab-build lab-bridges lab-up run test lint
+# The venv's private Python with the raw-socket capability (made by `make setup-perms`) runs the server,
+# so ARP scanning works without root. Without it the normal Python is used and scans fall back to ping.
+RUN_PYTHON ?= $(or $(firstword $(wildcard $(CURDIR)/.venv/bin/python-netmind $(CURDIR)/venv/bin/python-netmind)),$(PYTHON))
+
+.PHONY: help up down lab-build lab-bridges lab-up run test lint setup-perms unsetup-perms
 
 help:
 	@echo "make up | down | lab-build | lab-bridges | lab-up | run | test | lint"
+	@echo "make setup-perms | unsetup-perms   (one-time: lets the server run without root)"
 
 # Build the custom firewall and camera images.
 lab-build:
@@ -35,7 +40,14 @@ down:
 	cd $(TOPO_DIR) && sudo containerlab destroy -t $(TOPO) --cleanup
 
 run:
-	cd agent && $(PYTHON) -m uvicorn web_server:app --host 127.0.0.1 --reload
+	cd agent && $(RUN_PYTHON) -m uvicorn web_server:app --host 127.0.0.1 --reload
+
+# One-time, per machine: raw-socket capability for ARP scans + a validated sudo helper for re-attaching devices.
+setup-perms:
+	bash scripts/setup-permissions.sh
+
+unsetup-perms:
+	bash scripts/setup-permissions.sh --remove
 
 test:
 	$(PYTHON) -m pytest
