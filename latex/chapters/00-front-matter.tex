@@ -1,0 +1,273 @@
+% ============================================================
+% Front matter: cover, title page, declaration, approval,
+% acknowledgements, abstracts, lists
+% ============================================================
+
+% Team, used on the cover, the title page and the declaration
+\newcommand{\teamlist}{%
+  Khaled Ibrahim Alghmlas -- 445050235\\
+  Faleh Hamoud Alsubaie -- 445050053\\
+  Ibrahim Abdulrahman Alharthi -- 445050024}
+
+\newcommand{\titleblock}[1]{% #1 = vertical gap between blocks
+  {\LARGE\bfseries\setstretch{1.15}\projecttitle\par}
+  \vspace{#1}
+  {\large\bfseries\setstretch{1.2}\teamlist\par}
+  \vspace{#1}
+  To obtain\par
+  {\large BSc in Computer Science\par}
+  \vspace{0.7\dimexpr#1\relax}
+  Department of Computer Sciences\par
+  College of Computer Engineering and Sciences\par
+  \vspace{0.7\dimexpr#1\relax}
+  Supervisor: Dr.\ Khalil Chebil\par
+  \vspace{0.7\dimexpr#1\relax}
+  December 2026\par}
+
+% ------------------------------------------------------------
+% Cover page
+% ------------------------------------------------------------
+\begin{titlepage}
+\setstretch{1.1}
+\noindent
+\begin{minipage}[b]{0.4\textwidth}
+\footnotesize
+Kingdom of Saudi Arabia\\
+Ministry of Education\\
+Prince Sattam Bin Abdulaziz University\\
+College of Computer Engineering and Sciences\\
+Department of Computer Sciences
+\end{minipage}\hfill
+\begin{minipage}[b]{0.2\textwidth}
+\centering\includegraphics[width=0.75\linewidth]{psau-logo.jpeg}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.36\textwidth}
+\raggedleft\footnotesize
+\ar{المملكة العربية السعودية}\\
+\ar{وزارة التعليم}\\
+\ar{جامعة الأمير سطام بن عبد العزيز}\\
+\ar{كلية هندسة وعلوم الحاسب}\\
+\ar{قسم علوم الحاسب}
+\end{minipage}
+
+\vspace{1.6cm}
+\begin{center}
+\titleblock{1.2cm}
+\vspace{0.6cm}
+Number: *****
+\end{center}
+\end{titlepage}
+
+% ------------------------------------------------------------
+% Title page
+% ------------------------------------------------------------
+\begin{titlepage}
+\vspace*{2.5cm}
+\begin{center}
+\titleblock{1.8cm}
+\end{center}
+\end{titlepage}
+
+% ------------------------------------------------------------
+% Declaration
+% ------------------------------------------------------------
+\setcounter{page}{2}
+\frontchapter{Declaration}
+
+I/we hereby declare that this project report is based on my/our original
+work except for citations and quotations which have been duly acknowledged.
+I/We also declare that it has not been previously or concurrently submitted
+for any other degree at PSAU or any other institution.
+
+\vspace{1.5cm}
+\noindent Signature:\ \dotfill\ \ \ Date:\ \makebox[5cm]{\dotfill}
+
+\vspace{1cm}
+\noindent
+\begin{tabular}{@{}p{0.5\textwidth}l@{}}
+Name: Khaled Ibrahim Alghmlas      & ID: 445050235 \\[0.4em]
+Name: Faleh Hamoud Alsubaie        & ID: 445050053 \\[0.4em]
+Name: Ibrahim Abdulrahman Alharthi & ID: 445050024 \\
+\end{tabular}
+
+% ------------------------------------------------------------
+% Approval
+% ------------------------------------------------------------
+\frontchapter{Approval for Submission}
+
+I certify that this project report entitled \textbf{``\projecttitle''} was
+prepared by Khaled Ibrahim Alghmlas, Faleh Hamoud Alsubaie and Ibrahim
+Abdulrahman Alharthi and has met the required standard for submission in
+partial fulfillment of the requirements for the degree of Bachelor of Science
+in Computer Science at PSAU.
+
+\vspace{1.2cm}
+Approved by
+
+\vspace{2cm}
+\noindent Signature:\ \makebox[7cm]{\dotfill}
+
+\noindent Supervisor: Dr.\ Khalil Chebil
+
+\noindent Date:\ \makebox[7cm]{\dotfill}
+
+% ------------------------------------------------------------
+% Acknowledgements
+% ------------------------------------------------------------
+\frontchapter{Acknowledgements}
+
+We would like to express our sincere gratitude to our supervisor,
+Dr.\ Khalil Chebil, for his continuous guidance, encouragement, and valuable
+feedback throughout the course of this project, including his encouragement
+to begin early development work ahead of schedule and the detailed
+improvement plan he prepared for the system. We are also grateful to the
+faculty members of the Department of Computer Sciences at Prince Sattam Bin
+Abdulaziz University for the knowledge and support that made this project
+possible.
+
+We would like to thank each other as a team: Khaled Ibrahim Alghmlas, Faleh
+Hamoud Alsubaie and Ibrahim Abdulrahman Alharthi, for the collaboration and
+shared effort that went into every part of NetMind. We would also like to
+thank our fellow students working on other graduation projects who generously
+shared their insights and discussed ideas with us on topics related to this
+work.
+
+% ------------------------------------------------------------
+% Abstract (English)
+% ------------------------------------------------------------
+\frontchapter{Abstract}
+
+\begin{center}
+\textbf{\projecttitle}
+\end{center}
+
+Modern networks combine many types of devices --- routers, switches,
+firewalls, and IoT equipment such as IP cameras --- and administering them
+typically requires familiarity with several vendor-specific command-line
+interfaces, which slows operations and increases the risk of operator error.
+This project presents NetMind, a network operations assistant that lets a
+user manage and monitor a network through natural-language conversation in
+Arabic or English rather than memorised commands. NetMind is built around a
+Large Language Model, accessed through the Groq API, given callable tools to
+check device status and IP addresses, power devices on or off, list devices
+on a network segment, test connectivity between devices, audit a firewall's
+configuration for common weaknesses, and verify whether a security camera
+still uses its default password. Destructive actions are never executed on
+the model's word alone: they require explicit confirmation by the user in the
+interface and are recorded in an audit log.
+
+To allow safe experimentation, NetMind operates against a simulated network
+built with Containerlab, with real IP addressing and routing between
+branches, so every action is executed against a genuine, contained network
+rather than a mock. A second, read-only mode extends the same interface to a
+real physical network, discovering devices by combining ARP scanning, a ping
+sweep, IPv6 neighbour discovery and mDNS without altering their state. A
+working prototype of both modes, together with a live monitoring dashboard,
+alert notifications, persistent storage and an automated test suite, was
+built and validated ahead of schedule. This document covers the motivation,
+requirements, design, and architecture of NetMind, the reasoning behind the
+tools and techniques chosen to build it, and the plan for the second term.
+
+% ------------------------------------------------------------
+% Abstract (Arabic)
+% ------------------------------------------------------------
+\chapter*{\hfill\ar{المستخلص}}
+\addcontentsline{toc}{chapter}{ABSTRACT (ARABIC)}
+
+\begin{center}
+\ar{\textbf{نتمايند: مساعد قائم على نماذج اللغة الكبيرة لإدارة وتأمين الشبكات}}
+\end{center}
+
+\begin{arabicpar}
+تجمع الشبكات الحديثة أنواعًا عديدة من الأجهزة، مثل الموجهات والمحولات
+(السويتشات) وجدران الحماية ومعدات إنترنت الأشياء كالكاميرات الأمنية،
+وعادةً ما تتطلب إدارتها الإلمام بعدة واجهات أوامر نصية خاصة بكل مورّد، مما
+يُبطئ عمليات التشغيل ويزيد من احتمال وقوع أخطاء بشرية. يقدّم هذا المشروع
+نظام نتمايند (NetMind)، وهو مساعد لعمليات الشبكات يتيح للمستخدم إدارة
+الشبكة ومراقبتها من خلال محادثة بلغة طبيعية باللغتين العربية والإنجليزية،
+بدلاً من حفظ الأوامر. يعتمد نتمايند على نموذج لغوي كبير، يُستدعى عبر واجهة
+Groq البرمجية، زُوّد بمجموعة من الأدوات القابلة للاستدعاء للتحقق من حالة
+الأجهزة وعناوين IP الخاصة بها، وتشغيلها أو إيقافها، وسرد الأجهزة على جزء
+معيّن من الشبكة، واختبار الاتصال بين الأجهزة، وتدقيق إعدادات جدار الحماية
+للكشف عن الثغرات الشائعة، والتحقق مما إذا كانت كاميرا المراقبة ما زالت
+تستخدم كلمة المرور الافتراضية. ولا تُنفَّذ الإجراءات التدميرية بناءً على
+كلام النموذج وحده، بل تتطلب تأكيدًا صريحًا من المستخدم في الواجهة وتُسجَّل
+في سجل تدقيق.
+\end{arabicpar}
+
+\begin{arabicpar}
+ولإتاحة التجربة الآمنة، يعمل نتمايند على شبكة محاكاة مبنية باستخدام
+Containerlab، بعنونة IP وتوجيه حقيقيين بين الفروع، بحيث يُنفَّذ كل إجراء
+على شبكة حقيقية ومحتواة فعلاً وليس على نموذج وهمي. كما يوفر النظام وضعًا
+ثانيًا للقراءة فقط يمتد بالواجهة نفسها إلى شبكة فعلية حقيقية، حيث يكتشف
+الأجهزة المتصلة بالجمع بين فحص ARP وفحص ping واكتشاف جيران IPv6 وبروتوكول
+mDNS دون التأثير في حالتها. وقد تم بناء نموذج أولي يُطبّق كلا الوضعين، إلى
+جانب لوحة مراقبة حيّة وتنبيهات وتخزين دائم ومجموعة اختبارات آلية، والتحقق من
+عمله قبل الموعد المقرر. ويغطي هذا التقرير دوافع المشروع ومتطلباته وتصميمه
+ومعماريته، والأسباب وراء اختيار الأدوات والتقنيات المستخدمة في بنائه، وخطة
+العمل للفصل الدراسي الثاني.
+\end{arabicpar}
+
+% ------------------------------------------------------------
+% Lists
+% ------------------------------------------------------------
+\cleardoublepage
+\tableofcontents
+\cleardoublepage
+\listoftables
+\cleardoublepage
+\listoffigures
+
+% ------------------------------------------------------------
+% Abbreviations
+% ------------------------------------------------------------
+\frontchapter{List of Symbols/Abbreviations}
+
+\setlength{\LTleft}{0pt}
+\begin{longtable}{@{}p{3.2cm}l@{}}
+AI      & Artificial Intelligence \\
+API     & Application Programming Interface \\
+ARP     & Address Resolution Protocol \\
+CI      & Continuous Integration \\
+CPU     & Central Processing Unit \\
+DHCP    & Dynamic Host Configuration Protocol \\
+DNS     & Domain Name System \\
+FR      & Functional Requirement \\
+HTTP    & Hypertext Transfer Protocol \\
+ICMP    & Internet Control Message Protocol \\
+IoT     & Internet of Things \\
+IP      & Internet Protocol \\
+JSON    & JavaScript Object Notation \\
+LLM     & Large Language Model \\
+MAC     & Media Access Control \\
+MCP     & Model Context Protocol \\
+mDNS    & Multicast Domain Name System \\
+NDP     & Neighbor Discovery Protocol (IPv6) \\
+NETCONF & Network Configuration Protocol \\
+NFR     & Non-Functional Requirement \\
+OUI     & Organizationally Unique Identifier \\
+PSAU    & Prince Sattam Bin Abdulaziz University \\
+RBAC    & Role-Based Access Control \\
+REST    & Representational State Transfer \\
+SDK     & Software Development Kit \\
+SNMP    & Simple Network Management Protocol \\
+SQL     & Structured Query Language \\
+SSDP    & Simple Service Discovery Protocol \\
+SSH     & Secure Shell \\
+TCP     & Transmission Control Protocol \\
+UDP     & User Datagram Protocol \\
+UPnP    & Universal Plug and Play \\
+VM      & Virtual Machine \\
+WSL     & Windows Subsystem for Linux \\
+YAML    & YAML Ain't Markup Language \\
+\end{longtable}
+
+% ------------------------------------------------------------
+% Keywords
+% ------------------------------------------------------------
+\frontchapter{List of Keywords}
+
+NetMind, Large Language Models, Network Automation, Network Security,
+Containerlab, Firewall Auditing, Network Simulation, Natural Language
+Interface, Docker, Network Operations, Tool Calling, AI Agent, Network
+Discovery, Network Topology, Python, Scapy, SQLite.

@@ -1,0 +1,200 @@
+% ============================================================
+\chapter{Conclusion}
+% ============================================================
+
+\section{Summary of Achievements}
+
+NetMind set out to let someone responsible for a small or medium branch
+network describe what they want in natural language, in either Arabic or
+English, rather than learn a vendor-specific command-line syntax. By the end
+of Project 1, both of the system's operating modes were working and
+demonstrated: a simulated mode that queries and controls a real Containerlab
+network of routers, firewalls, hosts, and cameras, and a read-only
+real-network mode that discovers devices on the physical local network by
+combining four discovery methods, without altering them. Destructive actions
+are guarded by a confirmation step, protected devices need an extra
+acknowledgement, and every outcome is written to an audit log. A live
+dashboard, an alert history with Telegram notifications, persistent storage,
+and an automated test suite running on every change complete the system.
+
+Because development started early, the team also completed the first two
+milestones of the supervisor's improvement plan within this term:
+stabilisation (October) and the architecture refactor (November).
+Figure~\ref{fig:scope} places what was actually built against what remains
+for Project 2, and Table~\ref{tab:coverage} summarises, capability area by
+capability area, how the requirements gathered in Chapter~3 were met.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\small,>={Stealth[length=2.5mm]}]
+  \node[draw,rounded corners=3pt,fill=boxgray,text width=6.6cm,inner sep=7pt,align=left] (p1) {%
+    {\large\bfseries\color{donegreen}Project 1 (achieved)}\par\smallskip
+    \begin{itemize}[leftmargin=1.1em,itemsep=1pt,topsep=2pt]
+      \item Simulated-network device status \& power control
+      \item Firewall auditing \& port control (INPUT and FORWARD)
+      \item Camera stream \& credential checks
+      \item Real-network discovery: ARP, ping, IPv6, mDNS (read-only)
+      \item Bilingual (EN/AR) chat with evidence view
+      \item Live dashboard, alert history, Telegram alerts
+      \item Confirmation step, protected devices \& audit log
+      \item Services, backends, tool registry, model provider
+      \item SQLite storage; server runs without root
+      \item Automated tests, coverage \& continuous integration
+    \end{itemize}};
+  \node[draw,rounded corners=3pt,text width=6.0cm,inner sep=7pt,align=left,right=1.4cm of p1.north east,anchor=north west] (p2) {%
+    {\large\bfseries\color{nextred}Project 2 (planned)}\par\smallskip
+    \begin{itemize}[leftmargin=1.1em,itemsep=1pt,topsep=2pt]
+      \item Background collector \& real-time alert state machine
+      \item Diagnostic and alert-history tools for the agent
+      \item Fault injection \& root-cause analysis
+      \item Proactive fixes, firewall rollback
+      \item Authentication and roles
+      \item MCP server and a hardened agent harness
+      \item Benchmark, model comparison, usability study
+    \end{itemize}};
+  \draw[->,thick] (p1.east) -- (p2.west |- p1.east);
+\end{tikzpicture}
+\caption{Project 1 (achieved) scope against Project 2 (planned) scope}
+\label{fig:scope}
+\end{figure}
+
+{\small
+\begin{xltabular}{\textwidth}{|Y|L{3.4cm}|}
+\hline
+\head \textbf{Capability Area} & \textbf{Status} \\ \hline
+\endhead
+Device status \& power control (FR1, FR2) & Met \\ \hline
+Network/segment visibility (FR3) & Met \\ \hline
+Firewall auditing \& port control (FR4, FR5) & Met \\ \hline
+Camera stream \& credential checks (FR6) & Met \\ \hline
+Real-network discovery, read-only (FR7, NFR4) & Met \\ \hline
+Bilingual Arabic/English interface (FR8) & Met \\ \hline
+Scope guarding: refusing unrelated requests (FR9) & Met \\ \hline
+Live monitoring dashboard (FR10) & Met \\ \hline
+Confirmation before destructive actions, protected devices, audit log (FR11--FR13, NFR6) & Met \\ \hline
+Connectivity check between lab devices (FR14) & Met \\ \hline
+Alert notifications outside the browser (FR15) & Met \\ \hline
+Usability, performance, portability (NFR1--NFR3, NFR7--NFR11) & Met \\ \hline
+Least privilege, persistence, automated checks (NFR13--NFR15) & Met \\ \hline
+Authentication (NFR12) & Planned for Project 2 \\ \hline
+\caption{Requirement coverage summary}\label{tab:coverage}\\
+\end{xltabular}}
+
+\section{Limitations}
+
+Four limitations were deliberately accepted in Project 1 rather than left
+unnoticed. The first is that the web interface does not yet authenticate its
+users (NFR12). The server only listens on the local machine and refuses
+requests from other origins, which keeps it safe on a single laptop, but it
+assumes one trusted operator.
+
+The second is that alerts are computed when the dashboard asks for the device
+list, every few seconds, rather than by a background process. While nobody
+has the dashboard open, a device that goes down is only noticed when the
+dashboard is opened again, and detection time is therefore not yet measured.
+
+The third is an architectural trade-off described in Chapter~3: device state
+such as power status, firewall rules, and camera credentials is read live from
+Docker rather than stored in a database of NetMind's own. Only very short
+caches are used (three seconds for the device list, ten seconds for audits),
+and they are cleared whenever a power state, rule or password changes, so
+NetMind's picture cannot drift from the lab. This means every query needs a
+reachable Docker daemon and live containers, which is acceptable for a
+lab-scale deployment but would need to be revisited if NetMind were ever
+asked to manage a larger or longer-lived network.
+
+The fourth is that the agent's accuracy has not yet been measured: the
+system is tested thoroughly, but there is no structured measurement of how
+often the model chooses the right tool with the right arguments, in English
+and in Arabic.
+
+One limitation listed at the end of the first design, that conversation
+history was held only in memory and lost on restart, has since been resolved
+by the SQLite storage described in Chapter~5.
+
+{\small
+\begin{xltabular}{\textwidth}{|Y|Y|}
+\hline
+\head \textbf{Limitation} & \textbf{Planned Resolution} \\ \hline
+\endhead
+No authentication on the web interface & Authentication with viewer, operator and admin roles (\#31) \\ \hline
+Alerts depend on the dashboard being open & Background collector with a per-device state machine (\#19) \\ \hline
+Device state read live from Docker & Kept for the lab; the collector stores history and metrics (\#19) \\ \hline
+No structured measurement of accuracy or usefulness & Prompt benchmark, model comparison and usability study (\#34--\#38) \\ \hline
+\caption{Limitations and their planned resolution}\label{tab:limitations}\\
+\end{xltabular}}
+
+\section{Future Work}
+
+Project 2 continues the supervisor's seven-month plan, which is tracked as
+GitHub issues (issue numbers are given in brackets). Milestones M1 and M2 were
+completed this term; the remaining milestones, adjusted to the academic
+calendar, are listed in Table~\ref{tab:roadmap}.
+
+{\small
+\begin{xltabular}{\textwidth}{|L{3.4cm}|Y|}
+\hline
+\head \textbf{Milestone} & \textbf{Planned Work} \\ \hline
+\endhead
+M3: Observability & A background collector checking container state, reachability and camera streams on a schedule, with a per-device UP/DEGRADED/DOWN state machine, debounced alerts and stored history (\#19); diagnostic and alert-history tools for the agent, such as traceroute and routing tables (\#22, \#23) \\ \hline
+M4: Diagnosis & Reversible fault-injection scenarios such as a link going down, packet loss, a stopped service or a firewall misconfiguration (\#25); root-cause-analysis playbooks that diagnose a fault step by step with evidence (\#26) \\ \hline
+M5: Safe change & Proactive suggestions and remediation playbooks, always through the confirmation flow (\#29); firewall snapshots, diff, dry run and rollback (\#30); authentication and roles (\#31); new-device detection on the real network (\#32) \\ \hline
+M6: Evaluation & A benchmark of more than 100 English and Arabic prompts measuring tool-selection accuracy, latency and safety (\#34, \#38); comparison of LLM providers and models (\#35); failure and load testing (\#36); a usability study (\#37) \\ \hline
+M7: Delivery & Final thesis chapters, a v1.0 release, demo and mock defences (\#39--\#41) \\ \hline
+\caption{Project 2 milestones}\label{tab:roadmap}\\
+\end{xltabular}}
+
+In addition to the plan, two pieces of work suggested by the supervisor
+build directly on the structure delivered this term.
+
+\textbf{An MCP server.} The Model Context Protocol (MCP) is an open standard
+through which AI assistants connect to external tools. NetMind's tools
+already exist as registered functions with generated schemas, capabilities
+and risk levels, so they can be published through an MCP server. Any
+MCP-compatible assistant could then query and manage the lab through the same
+safety guard, confirmation flow and audit log, rather than only through
+NetMind's own chat.
+
+\textbf{A hardened agent harness.} The harness is the program around the
+model that runs the loop: it sends the request, lets the model call a tool,
+checks and runs the call, feeds the result back, and decides when to stop.
+NetMind's agent loop is already a small harness with a round limit, a retry
+safety net and a guard. Project 2 will strengthen it with clearer limits and
+timeouts, structured logging of every step, and the prompt benchmark above,
+so that changes to the model, the prompt or the tools can be measured rather
+than judged by eye.
+
+Figure~\ref{fig:timeline} places Project 1's phases on a timeline, for
+reference against the Project 2 work that follows it.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\footnotesize,x=3.3cm,y=0.85cm]
+  \foreach \m/\i in {September/0,October/1,November/2,December/3}{
+    \fill[headgray] (\i,0) rectangle (\i+1,-0.8);
+    \node[font=\small\bfseries] at (\i+0.5,-0.4) {\m};
+    \draw[black!25] (\i,0) -- (\i,6.4);
+  }
+  \draw[black!25] (4,0) -- (4,6.4);
+  % \ph{start}{end}{row}{colour}{text}  (x in months from 1 September)
+  % \ph{start}{end}{row}{colour}{text}: bar in months from 1 September, label to its right
+  \newcommand{\ph}[5]{\draw[rounded corners=2pt,fill=#4] (#1,#3-0.3) rectangle (#2,#3+0.3);
+    \node[anchor=west,font=\footnotesize] at (#2,#3) {#5};}
+  \ph{0.0}{0.45}{0.8}{green!35}{Requirements \& design}
+  \ph{0.25}{0.95}{1.7}{blue!25}{Simulated lab, firewalls, cameras}
+  \ph{0.55}{1.25}{2.6}{orange!35}{Real mode \& live dashboard}
+  \ph{1.0}{2.0}{3.5}{yellow!45}{M1: safety, tests, CI, \code{make up}}
+  \ph{2.0}{2.75}{4.4}{red!30}{M2: refactor, SQLite, merged scan}
+  \draw[rounded corners=2pt,fill=black!15] (2.7,5.0) rectangle (3.6,5.6);
+  \node[anchor=east,font=\footnotesize] at (2.7,5.3) {Report \& presentation};
+\end{tikzpicture}
+\caption{Project 1 timeline, by phase}
+\label{fig:timeline}
+\end{figure}
+
+Taken together, Project 1 delivered a working, demonstrated system covering
+both of NetMind's operating modes, together with the safety, storage and
+testing foundations that the planned work depends on. The remaining work is
+to make NetMind observe the network on its own, diagnose faults, change it
+safely, and measure how well it does so; it extends what already exists
+rather than redesigning it.

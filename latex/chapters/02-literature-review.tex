@@ -1,0 +1,171 @@
+% ============================================================
+\chapter{Literature Review}
+% ============================================================
+
+\section{Review of Literature}
+
+Research on applying large language models (LLMs) to network management has
+grown rapidly since 2023. Hong, Van Tu, and Hong (2025) provide a
+comprehensive survey of this field, classifying LLM-based approaches into
+five task areas: network design, configuration, fault management, security,
+and orchestration. Their analysis shows that most existing studies address
+only one stage of the management workflow in isolation, rely on simulated or
+historical data rather than live infrastructure, and still suffer from
+hallucination and limited reliability when scaled to complex, heterogeneous
+environments.
+
+At the systems level, Wang et al.\ (2025) describe Confucius, a multi-agent
+LLM framework developed at Meta that models network management workflows as
+directed acyclic graphs and coordinates several specialised agents, each
+responsible for a distinct sub-task, to carry out complex operator intents
+while validating actions before execution. This illustrates one architectural
+direction for LLM-based network management: decomposing a task among
+cooperating agents rather than relying on a single general-purpose model.
+
+Closer to the security-focused component of NetMind, Jiang, Gember-Jacobson,
+and Feamster (2024) propose CAIP, a framework that supplies LLMs with
+carefully mined network-specific context to detect router misconfigurations,
+reporting a full detection rate on synthetic faults and the discovery of
+previously unnoticed issues in real configurations. Lorusso, Maci, and Coscia
+(2025) propose GOLLUM, a conversational agent that guides firewall
+configuration using a retrieval-augmented LLM to compensate for the limited
+domain-specific knowledge of general-purpose models. Both studies confirm that
+LLMs can meaningfully assist with network security tasks when given the right
+supporting context, but each addresses a single, narrow task rather than an
+integrated management platform.
+
+\section{Brief Description of Existing Systems}
+
+Beyond academic studies, LLM-based network assistants also exist as
+commercial products and independent open-source projects.
+
+Selector AI Copilot is a commercial platform that grounds an LLM in real
+network telemetry, allowing operators to ask natural-language questions about
+their infrastructure and, through an agent framework, translate the answers
+into automated operational workflows.
+
+JACE is an open-source autonomous agent that connects to real Junos network
+devices over SSH and NETCONF, performs scheduled health checks, detects
+anomalies, and answers natural-language questions about the network, while
+retaining memory of device state and past incidents across sessions.
+
+These two systems represent, respectively, an enterprise-grade commercial
+product and an independently developed open-source project, both operating
+exclusively against real production networks.
+
+\section{Advantages and Disadvantages of Existing Systems}
+
+The systems reviewed above demonstrate clear strengths. Selector AI benefits
+from mature integration with real telemetry sources and an established agent
+framework suited to production environments. JACE benefits from persistent
+memory across sessions, allowing it to correlate incidents and remember
+device baselines over time, and from directly automating monitoring without
+requiring an operator to ask. CAIP and GOLLUM demonstrate that narrowly scoped
+LLM systems can achieve very high accuracy within their specific task, since
+focusing on one problem allows deeper, more reliable context engineering.
+
+These strengths come with trade-offs. Selector AI is designed for large, real
+production networks and offers no safe environment in which students or new
+operators can experiment without risk to a live network. JACE, and most of
+the studies surveyed by Hong et al.\ (2025), operate only against real
+devices, so an operational mistake by the LLM or the operator directly affects
+real infrastructure; none of them provide an isolated simulated environment
+for safe testing. CAIP and GOLLUM are limited to a single task,
+misconfiguration detection or firewall configuration respectively, and do not
+extend to device control, monitoring, or other management functions, so they
+would need to be combined with other tools to form a complete management
+platform.
+
+There is no system among those reviewed that combines a safe testing
+environment with broad, integrated functionality while remaining open source.
+
+\section{Problems with Existing Systems}
+
+Drawing on the systems above, three recurring problems can be identified in
+current LLM-based network management tools. First, most systems that act on
+real infrastructure provide no safe, isolated environment in which an LLM's
+actions can be tested before being trusted, which is a significant barrier for
+an educational or early-stage project where mistakes must be recoverable.
+Second, systems that do provide broad functionality, such as Confucius,
+achieve this through complex multi-agent orchestration, which increases
+engineering effort and is difficult to replicate at a smaller scale. Third,
+task-specific systems such as CAIP and GOLLUM achieve strong results within
+their domain but do not generalise to device control, network visibility, or
+camera and endpoint security, leaving a gap between narrow, highly accurate
+tools and broad, general-purpose but less specialised ones.
+
+{\small
+\begin{xltabular}{\textwidth}{|L{3.6cm}|>{\centering\arraybackslash}p{2.6cm}|Y|>{\centering\arraybackslash}p{2.0cm}|}
+\hline
+\head \textbf{System} & \textbf{Safe Testing Environment} & \textbf{Task Scope} & \textbf{Open Source} \\ \hline
+\endhead
+Selector AI Copilot & No & Broad (full observability) & No \\ \hline
+JACE & No & Broad (monitoring + diagnosis) & Yes \\ \hline
+CAIP & N/A (research) & Narrow (misconfiguration detection) & Partial \\ \hline
+GOLLUM & N/A (research) & Narrow (firewall configuration) & Partial \\ \hline
+Confucius & No & Broad but complex (multi-agent) & No \\ \hline
+\textbf{NetMind} & \textbf{Yes} & \textbf{Broad and integrated} & \textbf{Yes} \\ \hline
+\caption{Comparison of NetMind with existing systems}\label{tab:comparison}\\
+\end{xltabular}}
+
+\section{Proposed System}
+
+NetMind addresses these three problems directly. It pairs a fully simulated
+Containerlab network, in which every device is a real, independently
+controllable Docker container, with a strictly read-only real-network
+discovery mode, so that destructive or exploratory actions by the LLM are
+confined to a disposable simulated environment while the real network can
+only ever be observed. The boundary is enforced in code: the real-network
+backend simply has no capability to change a device, whatever the model
+asks. This removes the safety concern identified in existing
+real-network-only tools such as Selector AI and JACE. Rather than a
+multi-agent architecture, NetMind uses a single language model with a
+defined set of callable tools spanning device control, network visibility,
+connectivity checks, firewall auditing, and camera security, which keeps the
+system simpler to build and reason about than a framework like Confucius
+while still covering more ground than single-task systems such as CAIP or
+GOLLUM. Each conversation is paired with a live dashboard and an alert
+history that reflect the current state of the network, so that every query
+is answered from up-to-date system state rather than from potentially stale
+conversational memory.
+
+\section{Alternative Solutions Considered}
+
+\para{Network Simulation Platform}
+
+Several network simulation platforms were evaluated before choosing
+Containerlab for NetMind's simulated network. Cisco Packet Tracer is widely
+used for teaching, but its nodes are not real operating systems and cannot be
+controlled programmatically from outside the application. GNS3 and EVE-NG run
+real device images, but typically inside full virtual machines, which is
+heavier on resources and oriented toward a graphical, VM-centric workflow.
+Mininet is lightweight and Python-based, but its network model is built
+around virtual switches for software-defined-networking research rather than
+independently controllable general-purpose containers. Kathara is
+Docker-based, similar in spirit to Containerlab, but has a smaller ecosystem
+and less adoption in real network-engineering contexts. Containerlab was
+chosen because each node it creates is a real, independently addressable
+Docker container: NetMind's control layer can use the standard Docker SDK to
+start, stop, and execute commands inside any device exactly as on a real
+Linux host, including running iptables on the firewalls and a small HTTP
+service on the cameras, a level of direct, programmatic, container-native
+control that none of the other evaluated tools offered.
+
+\para{Large Language Model Provider}
+
+Several ways of providing the language model behind NetMind were also
+considered. The OpenAI and Anthropic APIs offer strong general-purpose models
+with mature tool-calling support, but at higher per-token latency and cost
+than were necessary for this project. A locally self-hosted model, for
+example through Ollama, would avoid ongoing API costs, but requires capable
+local hardware to run reliably enough for consistent tool-calling and
+bilingual Arabic/English understanding, which was not practical in the
+project's development environment. Groq was chosen because it exposes an
+OpenAI-compatible tool-calling interface while running open-weight models
+such as \code{openai/gpt-oss-120b} on inference hardware built specifically
+for low response latency. Since NetMind's agent loop can make several
+sequential tool calls to satisfy a single user request, per-call latency
+compounds directly into the user's perceived response time, making Groq's
+inference speed a directly relevant advantage rather than an incidental one.
+The model is reached through a small provider interface (Section~5.2.3), so
+this choice can be revisited without changing the rest of the system.

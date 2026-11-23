@@ -1,0 +1,600 @@
+% ============================================================
+\chapter{System Design}
+% ============================================================
+
+\section{System Architecture and Program Flow}
+
+NetMind's architecture separates four concerns: deploying the network,
+resolving device names to real network identities, deciding what action to
+take, and checking that the action is allowed before it runs.
+
+\textbf{Deployment.} Containerlab is used only once per deployment:
+\code{generate\_topology.py} builds a topology YAML file from a Python
+description of the branches and devices (\code{branches.py}, the single
+source of truth for the layout and IP plan), and \code{containerlab deploy}
+creates the actual Docker containers and virtual links. \code{make up} runs
+the whole sequence, including the idempotent creation of the Linux bridges
+that act as switches and hubs. After this point Containerlab is no longer
+involved; every device is simply an ordinary Docker container.
+
+\textbf{The device registry.} Because container names and IP addresses are
+only known once Containerlab has deployed them, \code{build\_registry.py}
+runs \code{containerlab inspect}, cross-references the live state against the
+static branch design, and writes a single \code{registry.json} mapping each
+device's name and owner to its real container name and IP addresses. This
+registry, not Containerlab, is what the rest of the system queries at runtime.
+
+\textbf{Services and backends.} All lab logic lives in three typed services
+(\code{DeviceService}, \code{FirewallService} and \code{CameraService} in
+\code{services.py}) which use the Docker SDK to start and stop containers
+and to execute commands inside them, such as running iptables inside a
+firewall or requesting a camera's stream. The outside world (the Docker
+client, the registry loader) is passed into each service, so every service
+can be tested with plain fakes. The services sit behind a
+\code{NetworkBackend} interface with two implementations: a
+\code{ContainerlabBackend} for the simulated lab and a
+\code{RealLanBackend} for the physical network. Each backend declares the
+capabilities it has, and a tool whose capability the backend lacks is
+refused in code.
+
+\textbf{The language model layer.} Every tool the model can use is one
+registered Python function (\code{tool\_catalog.py}); its schema is built
+from the function's name, type hints and docstring, and its decorator records
+the capability it needs and its risk level. The web server sends the user's
+message and the schemas of the active mode's tools to the model through a
+provider interface. The model decides whether to reply directly or to call
+one or more tools; each call passes through the safety guard
+(Section~\ref{sec:guard}), the result is fed back to the model, and this
+repeats for up to five rounds until a final reply is produced. The language
+model therefore never touches Docker or Containerlab directly; it only sees
+named tools and their results, which is also what lets the same model operate
+the separate real-network mode simply by swapping the backend.
+Figure~\ref{fig:programflow} shows the deploy-time path and the runtime
+loop, and Figure~\ref{fig:layers} shows the layers a tool call passes
+through.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  box/.style={draw,rounded corners=2pt,fill=white,align=center,minimum height=1.0cm,inner sep=3pt,text width=2.9cm},
+  zl/.style={font=\scriptsize\itshape,anchor=south west,inner sep=2pt},
+  note/.style={font=\scriptsize\itshape,text=black!75},
+  >={Stealth[length=2mm]}]
+  % deploy time
+  \draw[dashed] (-0.2,0.9) rectangle (14.4,-0.9);
+  \node[zl] at (-0.2,0.9) {Deploy time (\code{make up}, once per deployment)};
+  \node[box] (gen) at (1.65,0) {\code{generate\_topology.py}};
+  \node[box] (dep) at (5.0,0) {\code{containerlab deploy}};
+  \node[box] (reg) at (8.55,0) {\code{build\_registry.py}};
+  \node[box,fill=boxgray] (json) at (12.4,0) {\textbf{\code{registry.json}}};
+  \draw[->] (gen) -- (dep); \draw[->] (dep) -- (reg); \draw[->] (reg) -- (json);
+  % runtime
+  \draw[dashed] (-0.2,-1.7) rectangle (14.4,-7.3);
+  \node[zl] at (-0.2,-1.7) {Runtime (every chat request)};
+  \node[box,fill=userblue] (chat) at (1.6,-3.0) {Browser\\(user message)};
+  \node[box] (ws) at (6.3,-3.0) {\textbf{Agent loop}\\(\code{web\_server.py},\\\code{agent\_core.py})};
+  \node[box] (llm) at (12.4,-3.0) {\textbf{Groq API}\\tool-calling LLM};
+  \node[box,fill=guardorange] (guard) at (6.3,-5.3) {\textbf{Safety guard}\\run, or ask the user\\to confirm; audit};
+  \node[box,text width=3.2cm] (be) at (12.4,-5.3) {\textbf{Backend + services}\\lab: Docker SDK\\real LAN: scanner};
+  \draw[->] ([yshift=2mm]chat.east) -- node[above,note]{message} ([yshift=2mm]ws.west);
+  \draw[->] ([yshift=-2mm]ws.west) -- node[below,note]{reply} ([yshift=-2mm]chat.east);
+  \draw[->] ([yshift=2mm]ws.east) -- node[above,note]{messages + tool schemas} ([yshift=2mm]llm.west);
+  \draw[->] ([yshift=-2mm]llm.west) -- node[below,note]{tool call or final text} ([yshift=-2mm]ws.east);
+  \draw[->] (ws) -- node[left,note]{each tool call} (guard);
+  \draw[->] (guard) -- (be);
+  \draw[->] (be.south) -- ++(0,-0.7) -| node[pos=0.25,below,note]{result fed back to the model (up to 5 rounds)} (8.35,-3.25) -- (8.35,-3.25 -| ws.east);
+  \draw[->,dashed] (json.east) -- (14.05,0) -- node[pos=0.45,sloped,above,note]{device names resolved} (14.05,-5.3) -- (be.east);
+\end{tikzpicture}
+\caption{NetMind program flow, showing the deploy-time path and the runtime tool-calling loop}
+\label{fig:programflow}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  layer/.style={draw,rounded corners=2pt,text width=13.6cm,minimum height=0.85cm,align=center,fill=boxgray,inner sep=2pt},
+  >={Stealth[length=2mm]}, node distance=0.28cm]
+  \node[layer,fill=userblue] (ui) {\textbf{Web app} (\code{index.html}): chat, dashboard, devices, alerts, logs, reports};
+  \node[layer,below=of ui] (api) {\textbf{REST API} (FastAPI): chat, confirm, devices, alerts, logs, report, \dots};
+  \node[layer,below=of api] (agent) {\textbf{Agent loop} (\code{agent\_core.py}), \textbf{LLM provider} (\code{llm.py}), \textbf{sessions} (SQLite)};
+  \node[layer,below=of agent,fill=guardorange] (reg) {\textbf{Tool registry} (\code{tools.py}): schema, capability and risk of each tool, checked by the \textbf{safety guard}};
+  \node[layer,below=of reg] (be) {\textbf{Network backends} (\code{backends.py}): Containerlab backend (6 capabilities) \;|\; real-LAN backend (inventory only)};
+  \node[layer,below=of be] (svc) {\textbf{Services} (\code{services.py}): devices, firewalls, cameras \;|\; \code{network\_scanner.py}};
+  \node[layer,below=of svc,fill=white] (world) {Docker containers of the Containerlab lab \;|\; the real local network};
+  \foreach \a/\b in {ui/api,api/agent,agent/reg,reg/be,be/svc,svc/world} \draw[->] (\a) -- (\b);
+\end{tikzpicture}
+\caption{Layers a request passes through after the November refactor}
+\label{fig:layers}
+\end{figure}
+
+\section{Detailed Design}
+
+\subsection{Detailed Component Description}
+
+\para{Simulated Network Device Control Module}
+
+NetMind's simulated mode operates against a virtual network built with
+Containerlab: a core router, three branch firewalls, three switch or hub
+segments, eight hosts, and three IP cameras, connected with real IP
+addressing and routing between branches. This module exposes five groups of
+capabilities to the language model, summarised in Table~\ref{tab:simcaps}.
+
+\textbf{Device status and control.} Reporting whether a host, firewall,
+camera, or router is online or offline, retrieving its IP address, and
+powering it on or off. Device names are matched exactly by id or owner first
+and then, for small spelling mistakes, by a careful fuzzy match that only
+accepts one clearly best candidate. Power operations are idempotent, so a
+request to power on an already-running device is reported as no change
+rather than a false action. Because stopping a container deletes the virtual
+link Containerlab created, powering a host or camera back on re-attaches it
+to its switch and replays its addressing and routes, then checks that it can
+reach its gateway.
+
+\textbf{Network visibility and connectivity.} Listing every device with its
+owner, type, and status, listing the devices on a specific switch or hub
+segment, validating the segment name against the real topology rather than
+silently returning an empty result, and pinging one device from another over
+the lab's data network (not the management network, which would hide a
+broken link).
+
+\textbf{Firewall auditing.} Each branch firewall runs a real Linux iptables
+firewall rather than a placeholder. NetMind can list its configured rules,
+report open ports, audit it for common misconfigurations such as an
+administrative port left open to any source, and block or allow a port on
+request; changes persist across a normal power cycle. Rules are applied to
+both the INPUT chain and the FORWARD chain, because a rule on INPUT alone
+only protects the firewall itself and does not stop traffic passing through
+it between branches; an integration test confirms this with real traffic
+(Section~\ref{sec:testing}). Rule changes are idempotent: NetMind checks
+whether a rule already exists before inserting it, so repeating a request
+never creates duplicates.
+
+\textbf{Camera security.} Each camera runs a small real HTTP service, so
+NetMind can check whether its stream is actually reachable independently of
+the device's power state, start or stop the stream service, and check or
+change the camera's default password.
+
+{\small
+\begin{xltabular}{\textwidth}{|L{3.6cm}|Y|}
+\hline
+\head \textbf{Capability Group} & \textbf{What It Provides} \\ \hline
+\endhead
+Device status and control & Online/offline status, IP address, and idempotent power on/off for any host, firewall, camera, or router, with automatic re-attachment after power-on \\ \hline
+Network visibility & Listing every device, or every device on a specific switch/hub segment, validated against the real topology \\ \hline
+Connectivity & Pinging one lab device from another over the data network \\ \hline
+Firewall auditing & Listing configured iptables rules (INPUT and FORWARD chains), reporting open ports, auditing for misconfigurations, and blocking/allowing ports \\ \hline
+Camera security & Checking stream reachability independently of power state, starting/stopping the stream, and checking/changing the default password \\ \hline
+\caption{Simulated-mode capability groups (summary)}\label{tab:simcaps}\\
+\end{xltabular}}
+
+All of this runs over genuine IP addressing and routing between branches
+rather than a flat management network, verified through packet round-trip
+testing and Time-To-Live analysis to confirm that traffic between branches
+actually traverses the intended switch, firewall, and router path.
+
+\para{Real Network Discovery Module}
+
+The real network discovery module is the component that gives NetMind
+visibility of an actual physical network. It is written in Python and is
+deliberately read-only: it observes the local network and reports what it
+finds, but it never changes the state of any device. This is what separates
+it from the device control module, which manages the Docker containers of the
+simulated Containerlab network. Keeping the two apart means that every
+operation which can change a device is confined to the simulated
+environment, while the real network can only be observed, which removes any
+risk of the language model accidentally altering a live network. The
+boundary is enforced by the backend: \code{RealLanBackend} has only the
+inventory capability, so the power, firewall and camera tools cannot run
+against it whatever the model asks.
+
+The module exposes three functions to the tool layer: listing the devices on
+the network, checking whether a single device is online, and resolving a
+hostname to an IP address. Each device is returned once, as a dictionary
+containing its IPv4 address, its IPv6 addresses, its MAC address, its
+hostname, its status, and \code{found\_by}, the list of discovery methods
+that saw it. The dashboard shows \code{found\_by} for every device.
+
+\textbf{Program flow.} The first version of the module ran ARP and fell back
+to a ping sweep only when ARP could not run, so a scan reported the devices
+found by one method only, even though each method finds devices the other
+misses. In November the scan was redesigned so that all methods run at the
+same time and their results are merged. Table~\ref{tab:scansteps} lists the
+stages of a scan and Figure~\ref{fig:scanflow} shows the flow.
+
+{\small
+\begin{xltabular}{\textwidth}{|>{\centering\arraybackslash}p{0.8cm}|L{3.2cm}|Y|}
+\hline
+\head \textbf{Step} & \textbf{Stage} & \textbf{Description} \\ \hline
+\endhead
+1 & Subnet detection & The local subnet is derived from the machine's own IP address on its default route, so that no configuration is needed from the user. \\ \hline
+2 & Parallel discovery & Four methods start together: a broadcast ARP request to every address in the subnet (IP and MAC of each device that answers); a ping sweep of the subnet with 64 parallel workers; an mDNS browse of six seconds that maps addresses to the names devices advertise; and a ping to the IPv6 all-nodes address so that IPv6 neighbours appear in the kernel's neighbour table. A method that cannot run, such as ARP without raw-socket permission, is reported as not run, and the others still complete. \\ \hline
+3 & Merge & Devices are merged by IPv4 address. Each keeps the list of methods that found it. A device found only by ping takes its MAC address from the kernel's neighbour table. \\ \hline
+4 & IPv6 matching & IPv6 addresses from the neighbour table are attached to the device with the same MAC address. \\ \hline
+5 & Hostname resolution & For each device the hostname is taken from the mDNS table if present, and otherwise from a reverse DNS lookup, done in parallel. \\ \hline
+6 & Output & The list is sorted by address and returned with the methods that ran; it is cached for 20 seconds. \\ \hline
+\caption{Real-network discovery module program flow steps}\label{tab:scansteps}\\
+\end{xltabular}}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  box/.style={draw,rounded corners=2pt,fill=white,align=center,minimum height=0.85cm,inner sep=3pt},
+  par/.style={box,fill=boxgray,text width=2.6cm},
+  >={Stealth[length=2mm]}]
+  \node[box,text width=7.4cm] (sub) at (6.3,0) {1. Subnet detection (own IP on the default route)};
+  \node[par] (arp)  at (1.5,-2.1) {ARP broadcast\\(IP + MAC)};
+  \node[par] (ping) at (4.7,-2.1) {Ping sweep\\(64 workers)};
+  \node[par] (mdns) at (7.9,-2.1) {mDNS browse\\(6 seconds)};
+  \node[par] (ndp)  at (11.1,-2.1) {IPv6 all-nodes\\ping};
+  \draw[dashed] (-0.1,-1.25) rectangle (12.7,-2.85);
+  \node[font=\scriptsize\itshape,anchor=north west,inner sep=2pt] at (-0.1,-2.85) {2. Parallel discovery (a method that cannot run is skipped)};
+  \node[box,text width=8.4cm] (merge) at (6.3,-4.1) {3. Merge by IPv4 address and record \code{found\_by};\\MAC for ping-only hosts from the kernel neighbour table};
+  \node[box,text width=8.4cm] (v6) at (6.3,-5.45) {4. Attach the IPv6 addresses that have the same MAC};
+  \node[box,text width=8.4cm] (host) at (6.3,-6.55) {5. Hostname: mDNS table, then reverse DNS};
+  \node[box,text width=8.4cm,fill=guardorange] (out) at (6.3,-7.65) {6. Output: one entry per device, sorted, cached for 20 s};
+  \foreach \n in {arp,ping,mdns,ndp} \draw[->] (sub.south) -- (\n.north);
+  \draw[->] (8.5,-2.85) -- (8.5,-3.45 |- merge.north);
+  \draw[->] (merge) -- (v6); \draw[->] (v6) -- (host); \draw[->] (host) -- (out);
+\end{tikzpicture}
+\caption{Real-network discovery module program flow}
+\label{fig:scanflow}
+\end{figure}
+
+\textbf{Design Decisions and Alternatives Considered.} This part explains why
+each technique and library was chosen, and which alternatives were considered
+and not selected (summary in Table~\ref{tab:decisions}).
+
+{\small
+\begin{xltabular}{\textwidth}{|L{3.2cm}|Y|}
+\hline
+\head \textbf{Decision} & \textbf{Chosen Approach (Alternatives Considered)} \\ \hline
+\endhead
+Subnet detection & UDP socket trick, standard library only, with \code{ip addr} as a fallback (netifaces/psutil: accurate but an extra dependency; gethostbyname: often returns 127.0.0.1) \\ \hline
+Host discovery & ARP via Scapy and a ping sweep, run together and merged (Nmap: more capable but a heavier external binary; arp-scan: external dependency; OS ARP cache alone: misses undiscovered hosts; passive sniffing: slow) \\ \hline
+IPv6 discovery & Ping the all-nodes multicast address, then read the kernel neighbour table (a full IPv6 sweep: impossible, a /64 has $2^{64}$ addresses) \\ \hline
+Concurrency & ThreadPoolExecutor: one pool for the four methods, 64 workers for the ping sweep (multiprocessing: heavier for I/O-bound work; asyncio: would need a restructured codebase) \\ \hline
+Hostname discovery & mDNS via zeroconf (NetBIOS: Windows-only; SSDP/UPnP: fewer device types; DHCP leases: needs router access; SNMP: needs credentials) \\ \hline
+Reverse DNS & Python standard library, used as a secondary source \\ \hline
+Status checking & A single ping (TCP connect or ARP probe identified as possible improvements) \\ \hline
+Optional dependencies & Scapy and zeroconf imported in try/except, so the module degrades gracefully if either is missing \\ \hline
+Privileges & A copy of the virtualenv's Python with only the raw-socket capability, so ARP works without running the server as root \\ \hline
+\caption{Design decisions and alternatives considered (summary)}\label{tab:decisions}\\
+\end{xltabular}}
+
+\textbf{Subnet detection.} The active interface is found by opening a UDP
+socket towards a public address and reading the local address the operating
+system assigns to it. No packet is actually sent, and the method relies only
+on the Python standard library. If there is no default route at all, the
+module reads the interface configuration with \code{ip addr} instead.
+Alternatives were the netifaces and psutil libraries, which are more accurate
+on machines with several interfaces but add an external dependency, and
+gethostbyname applied to the machine's own hostname, which frequently returns
+the loopback address 127.0.0.1 and is therefore unreliable. The chosen method
+assumes a /24 subnet, which is a known limitation.
+
+\textbf{Host discovery with ARP, Scapy and a ping sweep.} ARP was chosen
+because it works at the data link layer: a device cannot ignore an ARP
+request and still take part in an Ethernet network, so ARP finds devices that
+are configured to block ICMP ping, and it also returns the MAC address. Scapy
+was chosen to send the requests because it is a pure Python library that
+integrates directly with the rest of the code and gives full control over
+packet construction without an external program. In practice, however, some
+devices answer ping but miss the short ARP window, so the ping sweep is not
+only a fallback: running both and merging the results finds more devices than
+either method alone, and \code{found\_by} makes visible which method saw each
+device. The alternatives were Nmap, used directly or through python-nmap,
+which is far more capable but is a separate binary larger than this module
+requires; the arp-scan command-line tool, which is fast but is again an
+external dependency; the operating system's ARP cache, which only lists
+devices that the machine has already communicated with; and passive sniffing
+of network traffic, which needs no probes but can take a long time to reveal
+quiet devices.
+
+\textbf{IPv6.} An IPv6 subnet is far too large to sweep, so the module sends
+one ping to the IPv6 all-nodes multicast address on the active interface. Every
+IPv6 device on the link answers, which places it in the kernel's neighbour
+table; the module then reads that table and attaches each IPv6 address to the
+device with the same MAC address. A device often has several IPv6 addresses
+(a link-local \code{fe80::} address and one or more global ones), and all are
+listed.
+
+\textbf{Concurrency.} Checking 254 addresses one after another would take
+several minutes, since each unanswered ping waits up to one second. A
+ThreadPoolExecutor with 64 workers runs the pings in parallel and reduces the
+sweep to a few seconds, and a second small pool runs the four discovery
+methods at the same time, so a full scan takes about as long as its slowest
+method. Threads suit this task because it is bound by waiting on the network
+rather than by computation. The alternatives were multiprocessing, whose
+separate processes add memory and start-up cost for work that is only
+waiting, and asyncio, which would be efficient but would require the
+surrounding code to be restructured around asynchronous functions.
+
+\textbf{Hostname discovery with mDNS.} Multicast DNS was chosen because small
+and home networks often have no reverse DNS records, so a reverse lookup
+alone returns no name for most devices. mDNS lets printers, AirPlay devices,
+Chromecast devices, and shared workstations announce their names without any
+credentials or access to the router, and the zeroconf library provides a pure
+Python implementation. The browse runs on every scan rather than once at
+server start, so that a device that joins the network later is still found.
+The alternatives were NetBIOS name queries, which are mostly limited to
+Windows hosts; SSDP and UPnP discovery, which cover fewer device types; DHCP
+lease tables read from the router, which need administrative access to the
+router; and SNMP queries, which need SNMP to be enabled and credentials to be
+known. A limitation of mDNS is that a device which advertises no service, such
+as an idle phone, appears without a hostname, although it is still listed by
+IP and MAC address.
+
+\textbf{Reverse DNS and status checking.} Reverse DNS through the standard
+library is used as a secondary source, because it is already available in
+Python at no cost and gives names on networks that do maintain DNS records.
+The status of a single device is determined with one ping, which keeps it
+consistent with the ping sweep and needs no extra dependency. A TCP
+connection check or an ARP probe would be more reliable against devices that
+block ICMP, and are identified as possible improvements.
+
+\textbf{Optional dependencies and output format.} Scapy and zeroconf are
+imported inside try and except blocks, and their availability is recorded in
+flags. If either library is missing the module degrades gracefully instead of
+failing to start, which makes it easier to run on different machines. Results
+are returned as plain dictionaries, rather than custom classes, because they
+map directly to JSON for the API.
+
+\textbf{Limitations.} ARP scanning only works within the local broadcast
+domain and needs the raw-socket capability. The ping command options used are
+those of Linux and would have to be adapted for Windows and macOS. A device
+that blocks ICMP may be reported as offline by the status check. The subnet is
+assumed to be a /24. Under WSL2's default network mode the scanner sees the
+virtual network between Windows and WSL rather than the physical LAN, so real
+mode needs WSL's mirrored networking mode or a native Linux machine. Finally,
+network scanning should only be carried out on networks owned by the user or
+for which permission has been given.
+
+\para{Live Monitoring Dashboard Module}
+
+The live monitoring dashboard is the module that gives the operator a single,
+continuously updated view of the network without having to ask the chat
+interface a question first. It is implemented as part of a unified
+single-page application that also hosts the chat interface, so both views
+share one navigation shell, one theme, one language setting, and one REST
+client rather than being two separate pages. Table~\ref{tab:dashcaps}
+summarises its capability groups.
+
+{\small
+\begin{xltabular}{\textwidth}{|L{3.6cm}|Y|}
+\hline
+\head \textbf{Capability Group} & \textbf{What It Provides} \\ \hline
+\endhead
+Unified application shell & One entry point providing both the chat and dashboard views, with shared sidebar navigation, light/dark theme, Arabic/English language switching, and a single REST client used by both views \\ \hline
+Mode-aware refresh & Polls \code{/api/devices} and \code{/api/alerts} (simulated) or \code{/api/real-devices} and \code{/api/real-alerts} (real network) on a fixed interval, discarding any response that no longer matches the currently selected mode to avoid a stale-data race \\ \hline
+Network visibility & Renders device and connection state, live statistics (online/offline counts), a topology view, and an active-alerts panel from the same registry data used by the chat tools \\ \hline
+Device inventory view & A dedicated devices page listing currently active devices, with best-effort device-type classification (laptop, phone, router, etc.) from MAC OUI prefixes and hostname heuristics, each shown with a type icon; in real mode it also shows how each device was found \\ \hline
+Evidence chain & Each chat reply that triggers one or more backend tool calls is accompanied by a collapsible, step-by-step trace of which tool was called, with what arguments, and what it returned, so the operator can inspect the reasoning behind a diagnosis rather than trusting it blindly \\ \hline
+\caption{Live monitoring dashboard capability groups (summary)}\label{tab:dashcaps}\\
+\end{xltabular}}
+
+\textbf{Design decisions.} The dashboard and chat interface were originally
+built as two separate HTML pages and were later merged into one application
+shell, each view kept in its own section and toggled client-side without a
+page reload, so that navigation state, theme, language, and the active
+network mode persist across both views instead of resetting. The refresh
+logic is deliberately race-safe: each poll captures which mode it was
+requested for, and a response is applied to the interface only if that mode
+is still the one selected when the response arrives, which prevents
+simulated-network data from briefly overwriting real-network data (or vice
+versa) when the operator switches modes while a request is in flight.
+Device-type classification in the inventory view is explicitly best-effort
+only: modern phones that randomise their MAC address (iOS 14+/Android 10+)
+cannot be reliably identified by OUI lookup, so the interface documents this
+limitation rather than presenting the classification as certain.
+
+\textbf{Limitation.} Like the rest of the frontend, the dashboard has no
+authentication and assumes a single trusted operator, consistent with the
+scoped-out security requirement (NFR12) already noted in Chapter~3.
+
+% ------------------------------------------------------------
+\subsection{Safety Guard: Confirmation, Protected Devices and Audit Log}
+\label{sec:guard}
+
+A language model that can call tools can also be wrong or be misled by a
+request, so NetMind does not let the model carry out destructive actions
+itself. Every tool is registered with one of three risk levels. \emph{Read}
+tools (status, listings, audits, pings) run immediately. \emph{Action} tools,
+which change state but are easy to undo (power on, start or stop a camera
+stream), also run immediately and are audited. \emph{Destructive} tools
+(power off, block port, allow port, and change camera credentials) never run
+on the model's call. Because the risk level is part of the tool's
+registration, the guard, the backends and the dashboard all read it from the
+same table, and a new tool cannot be added without one.
+
+When the model calls a destructive tool, the guard does not run the action.
+It stores a pending action containing the tool, its target, and its
+arguments, and returns a ``pending'' result to the model. The pending action
+is shown to the user in the chat as a Confirm/Cancel box. The action runs only
+when the user presses Confirm, which sends a request to a separate endpoint
+(\code{POST /api/confirm}) that the model has no way to call. A pending action
+that is not answered within five minutes expires.
+Figure~\ref{fig:confirm} shows the sequence.
+
+The core router and every firewall are classed as protected devices.
+Confirming an action on a protected device requires the user to tick an
+additional acknowledgement box, and the server rejects the request without
+it.
+
+Every outcome (executed, cancelled, expired, or rejected) is written to an
+audit log, stored in the SQLite database and also appended to
+\code{logs/audit.jsonl}. Each entry records the time, the tool, the target,
+the outcome, and the result. Camera passwords are redacted before an entry is
+written.
+
+Language models sometimes answer an action request in text, for example
+saying that a request is ``pending'', without calling any tool. In that case
+the user would see no Confirm box and nothing would happen. To catch this,
+the agent loop checks the reply against two patterns: a destructive request
+that produced no tool call, and a reply that claims something is pending or
+done. When either matches, the loop retries once with an explicit instruction
+to call the tool. This retry is a safety net for usability and does not weaken
+the guard, because no path from the model leads to execution.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\small,
+  stp/.style={draw,rounded corners=2pt,align=center,minimum width=6.2cm,minimum height=0.85cm,inner sep=3pt},
+  user/.style={stp,fill=userblue},
+  model/.style={stp,fill=boxgray},
+  guard/.style={stp,fill=guardorange},
+  side/.style={font=\scriptsize\itshape,align=left,anchor=west},
+  >={Stealth[length=2mm]}, node distance=0.42cm]
+  \node[user] (a) {User asks in the chat:\\``turn off host-khalid''};
+  \node[model,below=of a] (b) {Language model calls\\the \code{power\_off} tool};
+  \node[guard,below=of b] (c) {Guard stores a \textbf{pending action} and returns\\``pending'' to the model (nothing has run)};
+  \node[user,below=of c] (d) {Chat shows a \textbf{Confirm / Cancel} box\\(protected devices: extra acknowledgement)};
+  \node[user,below=of d] (e) {User presses \textbf{Confirm}};
+  \node[guard,below=of e] (f) {Guard runs the tool and records the outcome};
+  \node[stp,below=of f] (g) {Audit log entry (SQLite + \code{logs/audit.jsonl})};
+  \foreach \x/\y in {a/b,b/c,c/d,d/e,e/f,f/g} \draw[->] (\x) -- (\y);
+  \node[side] at ($(c.east)+(0.3,0)$) {expires after 5 minutes\\if unanswered};
+  \node[side] at ($(e.east)+(0.3,0)$) {\code{POST /api/confirm}, a route\\the model cannot call};
+\end{tikzpicture}
+\caption{Confirmation flow for destructive actions: the model can only create a pending action; only the user's button press executes it}
+\label{fig:confirm}
+\end{figure}
+
+% ------------------------------------------------------------
+\subsection{Tool Registry, Network Backends and Model Provider}
+
+In the first version, the model-facing description of every tool was written
+by hand in the web server, and separate tables mapped tool names to functions
+for each mode. The same information therefore lived in several places, and
+the rule that real mode is read-only was only stated in the prompt. Following
+the supervisor's assessment, this part of the system was refactored in
+November into three small, independently tested pieces.
+
+\textbf{Tool registry.} A tool is one plain Python function decorated with
+the capability it needs and its risk level. The schema the model receives is
+generated from the function itself: its name, its type hints, and the
+parameter descriptions in its docstring. Adding a tool means writing one
+function; nothing else lists tools. The simulated mode currently offers
+seventeen tools, and the real mode three.
+
+\textbf{Network backends.} The \code{NetworkBackend} interface describes a
+network NetMind can talk to. \code{ContainerlabBackend} declares six
+capabilities (inventory, segments, diagnostics, power, firewall and camera);
+\code{RealLanBackend} declares only inventory. The set of tools offered to the
+model in each mode is derived from the backend's capabilities, and calling a
+tool whose capability the backend lacks raises an error in code. The
+read-only guarantee for the real network (NFR4) therefore no longer depends
+on the prompt. The same interface is also the extension point for future
+backends, such as virtual machines or real network devices.
+
+\textbf{Model provider.} The agent loop only calls one method,
+\code{complete(messages, tools)}, on an \code{LLMProvider}. The Groq provider
+implements it with an OpenAI-compatible client, so changing the model vendor
+means writing one small class, which is what the model comparison planned for
+Project 2 relies on. The Groq client and all settings are created on first
+use rather than when the program is imported, so the application, and its
+tests, start even without an API key or Docker.
+
+% ------------------------------------------------------------
+\subsection{Persistence and Least Privilege}
+
+\textbf{Persistence.} Chat sessions, their messages, and the audit log are
+stored in a SQLite database (\code{logs/netmind.db}), created readable by its
+owner only because it contains chat text. One connection is shared by the
+server's threads and guarded by a lock. A storage failure never breaks a
+request: the agent catches it and carries on in memory. The alert history is
+kept in \code{logs/alerts.json}, so a device that is down across a restart
+keeps its original alert and its downtime keeps counting.
+
+\textbf{Running without root.} The server needs exactly two privileges: a raw
+socket for ARP scanning, and root rights to re-attach a lab device to its
+bridge after power-on. Rather than running the whole server with
+\code{sudo}, \code{make setup-perms} grants each one narrowly. A private copy
+of the virtualenv's Python receives only the raw-socket capability
+(\code{CAP\_NET\_RAW}), and \code{make run} uses it when present. Re-attaching
+is done by one small, root-owned helper script, \code{netmind-reconnect},
+which the user may run through \code{sudo} without a password and which
+checks every argument (the container must belong to the lab, the bridge must
+exist, and names may contain only safe characters) before doing anything.
+
+% ------------------------------------------------------------
+\subsection{Web API, Alerts and Notifications}
+
+The backend exposes a small REST API, listed in Appendix~\ref{app:api}. The
+chat endpoint runs the agent loop, bounded at five tool-calling rounds. The
+dashboard uses read endpoints for devices, alerts, and logs, and a power
+endpoint for the on/off buttons (turning on runs directly; turning off returns
+a pending action that goes through the guard).
+
+The first version of the dashboard polled the Docker daemon device by device,
+which made one refresh take more than fifteen seconds with the full lab
+running. Four changes made refreshes fast enough for regular polling:
+
+\begin{enumerate}
+\item all container states are read from a single container listing;
+  per-container statistics, the slowest call and the only source of the CPU
+  figures, are no longer requested, and the dashboard shows status rather than
+  CPU usage;
+\item the computed result is cached for three seconds, and concurrent callers
+  share one computation instead of each starting their own;
+\item firewall audits and camera credential checks used for the alert list
+  are cached for ten seconds, and the cache is cleared whenever a rule,
+  password or power state changes;
+\item the frontend coalesces overlapping refreshes and releases a pressed
+  button when its action finishes, so a button can no longer remain stuck.
+\end{enumerate}
+
+Three views sit on top of this state. The \emph{alert history} records a
+``Device Offline'' alert when a device goes down and a ``Device Back Online''
+alert, with the measured downtime, when it returns; the earlier alert is
+closed but never deleted, so the history shows both that a device went down
+and how long recovery took. Firewall findings and cameras still using their
+default password raise alerts the same way, each stamped once with the time
+it was first seen. The \emph{activity log} is built from the audit log and
+lists the actions people and the assistant requested (power changes, port
+changes, camera password changes), who requested them and how each one
+ended: awaiting confirmation, confirmed, cancelled, denied or expired. A
+\emph{report} view summarises open security findings, outages, average and
+longest recovery time and operator activity, and can be printed or saved as a
+PDF.
+
+When a Telegram bot is configured, every alert and every recovery is also
+sent as a message containing the network, the device, the event, its severity
+and the time, and real-network devices joining or leaving the network are
+reported the same way. A test button in the interface sends a test message,
+so the setup can be checked in one click. The integration is optional: without
+the two settings it does nothing, and a failure to send never breaks the
+request that triggered it.
+
+The web server accepts requests only from its own origin and listens on the
+local machine only. A request carrying a different \code{Origin} header is
+refused, so a web page open in the same browser cannot power a device off or
+confirm a pending action through the user's session.
+
+% ------------------------------------------------------------
+\section{Verification and Testing}
+\label{sec:testing}
+
+Verification used four layers, summarised in Table~\ref{tab:verification}.
+
+{\small
+\begin{xltabular}{\textwidth}{|L{3.6cm}|Y|L{2.4cm}|}
+\hline
+\head \textbf{Layer} & \textbf{What it checks} & \textbf{Result} \\ \hline
+\endhead
+Unit and endpoint tests (pytest, 153 test functions in 17 files) & Argument parsing, session pruning and history trimming, the guard (pending, confirm, cancel, expiry, protected acknowledgement, password redaction), the retry safety net, the tool registry and generated schemas, backend capabilities, the services with a fake Docker layer, firewall rule parsing and rule application on both chains, SQLite storage, settings, the permission helper's argument checks, the merged real-network scan, API endpoints, and dashboard caching & All passing in CI, with test coverage of at least 70\% enforced \\ \hline
+Browser UI tests (Playwright, 3 tests) & The real web server with a fake Docker layer, driven by a headless browser: powering a device off without its status flashing back online, the alert history, logs and report after an outage, and the chat view & Passing in CI \\ \hline
+Integration test against the live lab (1 test) & A block rule on a firewall really stops traffic between branches, and the allow rule restores it & Passed on the team's lab \\ \hline
+Manual browser verification & Pending, Confirm and Cancel flow, protected-device acknowledgement, audit log entries, power buttons after off/on, Arabic view, Real Network mode device list with \code{found\_by} & Passed \\ \hline
+\caption{Verification layers and results}\label{tab:verification}\\
+\end{xltabular}}
+
+Static checks (ruff) and the pytest suite, with a minimum coverage of 70\%,
+run automatically in GitHub Actions on every pull request, and work is merged
+into the main branch only through pull requests. A dedicated test checks that the unit
+tests cannot reach a Docker daemon at all, which proves that they run anywhere
+without the lab or an API key. The integration test needs the
+lab and is run on demand.
