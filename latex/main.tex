@@ -1,0 +1,148 @@
+% ============================================================
+% NetMind - Final Year Project Report (Project 1)
+% Prince Sattam Bin Abdulaziz University
+%
+% Compile with XeLaTeX (needed for the Arabic text):
+%     cd latex && latexmk -xelatex main.tex
+% or, without latexmk, run `xelatex main.tex` twice.
+% On Overleaf: Menu -> Compiler -> XeLaTeX.
+% ============================================================
+\documentclass[12pt,a4paper,oneside]{report}
+
+% ------------------------------------------------------------
+% Fonts and Arabic
+% ------------------------------------------------------------
+\usepackage{fontspec}
+\setmainfont{Liberation Serif}
+\setmonofont[Scale=0.92]{Liberation Mono}
+% FreeSerif has full Arabic coverage. Any Arabic font works here
+% (e.g. Amiri on Overleaf).
+\newfontfamily\arabicfont[Script=Arabic,Scale=1.08]{FreeSerif}
+
+% XeTeX's built-in right-to-left typesetting. Used instead of the
+% bidi/polyglossia packages so the report also builds on minimal
+% TeX installations. Arabic paragraphs are set flush right.
+\TeXXeTstate=1
+\newenvironment{arabicpar}
+  {\par\noindent\arabicfont\leftskip=0pt plus 1fil\rightskip=0pt
+   \parfillskip=0pt\beginR}
+  {\endR\par}
+\newcommand{\ar}[1]{{\arabicfont\beginR #1\endR}}
+
+% ------------------------------------------------------------
+% Page layout
+% ------------------------------------------------------------
+\usepackage[a4paper,left=1in,right=1in,top=1in,bottom=1in]{geometry}
+\usepackage{setspace}
+\setstretch{1.4}
+\setlength{\parskip}{0.55em}
+\setlength{\parindent}{0pt}
+\usepackage[hyphens]{url}
+
+% ------------------------------------------------------------
+% Packages
+% ------------------------------------------------------------
+\usepackage{graphicx}
+\graphicspath{{figures/}}
+\usepackage{float}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{xltabular}
+\setlength{\LTpre}{0.6em}\setlength{\LTpost}{0.4em}
+\usepackage{enumitem}
+\setlist{itemsep=0.25em,topsep=0.3em}
+\usepackage[table]{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,calc,shapes.geometric,backgrounds}
+\tikzset{every node/.append style={execute at begin node=\setstretch{1.0}}}
+\usepackage{caption}
+\captionsetup{labelfont=bf,labelsep=colon,font=small,skip=6pt}
+\usepackage{titlesec}
+\usepackage{tocloft}
+\usepackage[hidelinks,unicode]{hyperref}
+\hypersetup{
+  pdftitle={NetMind: An LLM-Powered Assistant for Network Operations and Security},
+  pdfauthor={Khaled Ibrahim Alghmlas, Faleh Hamoud Alsubaie, Ibrahim Abdulrahman Alharthi}
+}
+
+% ------------------------------------------------------------
+% Colours used in tables and diagrams
+% ------------------------------------------------------------
+\definecolor{headgray}{gray}{0.88}
+\definecolor{boxgray}{gray}{0.96}
+\definecolor{userblue}{HTML}{E8EAFB}
+\definecolor{guardorange}{HTML}{FCE9D4}
+\definecolor{donegreen}{HTML}{1E7B34}
+\definecolor{nextred}{HTML}{A61B1B}
+
+% Table helpers: grey header row, wrapped columns
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcommand{\head}{\rowcolor{headgray}}
+\renewcommand{\arraystretch}{1.25}
+
+% ------------------------------------------------------------
+% Headings: "CHAPTER 1: INTRODUCTION"
+% ------------------------------------------------------------
+\titleformat{\chapter}[block]
+  {\normalfont\LARGE\bfseries}
+  {CHAPTER \thechapter:\ }{0pt}{\MakeUppercase}
+\titlespacing*{\chapter}{0pt}{0pt}{1.4em}
+\titleformat{\section}{\normalfont\Large\bfseries}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\normalfont\large\bfseries}{\thesubsection}{0.6em}{}
+\titleformat{\subsubsection}{\normalfont\normalsize\bfseries\itshape}{\thesubsubsection}{0.6em}{}
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{3}
+
+% Unnumbered front-matter chapters
+\newcommand{\frontchapter}[1]{%
+  \chapter*{\MakeUppercase{#1}}%
+  \addcontentsline{toc}{chapter}{\MakeUppercase{#1}}}
+
+% Small italic run-in heading used inside sections
+\newcommand{\para}[1]{\par\medskip\textbf{\textit{#1}}\par}
+
+% Table of contents style
+\renewcommand{\cfttoctitlefont}{\normalfont\Huge\bfseries}
+\renewcommand{\cftlottitlefont}{\normalfont\Huge\bfseries}
+\renewcommand{\cftloftitlefont}{\normalfont\Huge\bfseries}
+\renewcommand{\contentsname}{TABLE OF CONTENTS}
+\renewcommand{\listtablename}{LIST OF TABLES}
+\renewcommand{\listfigurename}{LIST OF FIGURES}
+\renewcommand{\cftchapdotsep}{\cftnodots}
+
+% ------------------------------------------------------------
+% Shared text
+% ------------------------------------------------------------
+\newcommand{\projecttitle}{NETMIND: AN LLM-POWERED ASSISTANT FOR NETWORK OPERATIONS AND SECURITY}
+% Monospace code; allows a line break after an underscore or a dot
+\newcommand{\codeus}{\textunderscore\allowbreak}
+\newcommand{\code}[1]{{\ttfamily\let\_\codeus#1}}
+\emergencystretch=3em
+
+% ============================================================
+\begin{document}
+% ============================================================
+
+\pagenumbering{roman}
+\input{chapters/00-front-matter}
+
+\cleardoublepage
+\pagenumbering{arabic}
+\input{chapters/01-introduction}
+\input{chapters/02-literature-review}
+\input{chapters/03-system-analysis}
+\input{chapters/04-design-considerations}
+\input{chapters/05-system-design}
+\input{chapters/06-conclusion}
+
+\input{chapters/references}
+
+\appendix
+\titleformat{\chapter}[block]
+  {\normalfont\LARGE\bfseries}
+  {APPENDIX \thechapter:\ }{0pt}{\MakeUppercase}
+\input{chapters/appendices}
+
+\end{document}

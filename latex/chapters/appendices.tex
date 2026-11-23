@@ -1,0 +1,52 @@
+% ============================================================
+\chapter{REST API}
+\label{app:api}
+% ============================================================
+
+Table~\ref{tab:api} lists the endpoints exposed by the NetMind backend. The
+destructive actions reachable through the chat or the power endpoint produce
+pending actions; only \code{/api/confirm} executes them, and it is called by
+the interface, never by the language model. The server listens on
+\code{127.0.0.1} and refuses requests from other origins.
+
+{\small
+\begin{xltabular}{\textwidth}{|L{5.4cm}|Y|}
+\hline
+\head \textbf{Method and path} & \textbf{Purpose} \\ \hline
+\endhead
+\code{POST /api/chat} & Run the agent loop for one user message; returns the reply, mode, evidence steps, and any pending actions \\ \hline
+\code{POST /api/confirm} & Confirm or cancel a pending action (called by the interface only) \\ \hline
+\code{GET /api/pending} & List pending actions \\ \hline
+\code{GET /api/audit} & Audit log entries \\ \hline
+\code{GET /api/devices} & Simulated devices with id, type, IP address, branch and status \\ \hline
+\code{GET /api/alerts} & Alert history, newest first: devices going offline and back online (with downtime), firewall and camera findings \\ \hline
+\code{GET /api/logs} & Activity log: requested and confirmed actions, who made them, and their outcome \\ \hline
+\code{GET /api/report} & Security and reliability summary \\ \hline
+\code{POST /api/devices/\{id\}/power} & Turn a device on (runs) or off (creates a pending action) \\ \hline
+\code{POST /api/notify-test} & Send a Telegram test message, if Telegram is configured \\ \hline
+\code{GET /api/real-devices} & Real-network devices with IPv4, IPv6, MAC, hostname, status and \code{found\_by} (read-only) \\ \hline
+\code{GET /api/real-alerts}, \code{/api/real-logs} & Real Network mode counterparts: alerts, and devices joining or leaving the network \\ \hline
+\caption{REST API endpoints}\label{tab:api}\\
+\end{xltabular}}
+
+% ============================================================
+\chapter{Running NetMind}
+% ============================================================
+
+From the repository root, inside WSL2 Ubuntu with a native docker-ce engine
+and Containerlab installed:
+
+\begin{enumerate}
+\item Create a virtual environment and install the dependencies with
+  \code{pip install -r requirements.txt}. Add \code{GROQ\_API\_KEY} to a
+  \code{.env} file, and optionally \code{TELEGRAM\_BOT\_TOKEN} and
+  \code{TELEGRAM\_CHAT\_ID} for notifications.
+\item \code{make setup-perms} (once) gives the server the raw-socket
+  capability and the re-attach helper, so it does not need to run as root.
+\item \code{make up} builds the images, creates the Linux bridges, deploys the
+  lab, and writes \code{registry.json}.
+\item \code{make run} starts the web server, reachable at
+  \code{http://127.0.0.1:8000}.
+\item \code{make test} runs the automated tests, and \code{make lint} runs ruff.
+\item \code{make down} removes the lab.
+\end{enumerate}

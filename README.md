@@ -23,7 +23,6 @@ an audit trail and a security/reliability report.
 | Khaled Ibrahim Alghmlas | 445050235 | Core backend, topology, device control, agent core and safety |
 | Faleh Hamoud Alsubaie | 445050053 | Real-network scanner, web UI, lab connectivity tools |
 | Ibrahim Abdulrahman Alharthi | 445050024 | Dashboard, app shell, evidence view, logs, notifications |
-| Turki Khaled bin Askar | 445050245 | Team member |
 
 **Supervisor:** Dr. Khalil Chebil
 
@@ -115,6 +114,7 @@ graph TD
 │   └── firewall/              # Firewall image and entrypoint
 ├── docs/
 │   └── REPORT.md              # System assessment and 7-month enhancement plan
+├── latex/                     # Graduation project report (XeLaTeX): main.tex, chapters/, figures/
 ├── tests/                     # Unit tests (no Docker or API key needed)
 │   ├── integration/           # Tests against the running lab
 │   └── ui/                    # Headless-browser smoke test
@@ -312,6 +312,10 @@ background collector, fault injection and root-cause analysis, evaluation) are
 described in [docs/REPORT.md](docs/REPORT.md).
 
 ## Notes
+
+- The project report is in `latex/`. Build it with XeLaTeX (needed for the
+  Arabic abstract): `cd latex && latexmk -xelatex main.tex`, or upload the
+  folder to Overleaf and set the compiler to XeLaTeX.
 
 - `topology/registry.json` is gitignored because it contains machine-specific
   container IPs. Each teammate generates it locally with `make up` (or

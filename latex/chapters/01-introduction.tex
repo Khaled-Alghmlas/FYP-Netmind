@@ -1,0 +1,78 @@
+% ============================================================
+\chapter{Introduction}
+% ============================================================
+
+\section{Purpose of the Project}
+
+Modern computer networks combine a wide range of devices, including routers,
+switches, firewalls, and Internet of Things equipment such as IP cameras.
+Administering and monitoring these devices normally requires operators to be
+familiar with several vendor-specific command-line interfaces, which makes
+network operations slow, error-prone, and difficult for less experienced
+staff to perform safely.
+
+The purpose of this project is to design and implement NetMind, a network
+operations assistant that allows a user to manage and monitor a network using
+natural language instead of memorised commands. NetMind is built around a
+Large Language Model, accessed through the Groq API, which is given a set of
+callable tools that can check a device's power state and IP address, turn
+devices on or off, list every device on a given network segment, test whether
+two devices can reach each other, audit a firewall's configuration for common
+security weaknesses such as an open SSH port, and verify whether a security
+camera is still using its default password. The system understands requests
+in both Arabic and English and responds through a web application that
+combines the chat with a live monitoring dashboard.
+
+To allow safe experimentation, NetMind operates in a simulated mode against a
+virtual network built with Containerlab, consisting of a router, firewalls,
+switch and hub segments, hosts, and cameras running inside Docker containers
+with real IP addressing and routing between branches. A second, read-only
+real-network mode extends the same natural-language interface to an actual
+physical network, discovering connected devices by combining ARP scanning, a
+ping sweep, IPv6 neighbour discovery and mDNS. Together, these two modes
+demonstrate that a single conversational interface can be used both to learn
+and test network administration safely, and to observe a real network
+without requiring the user to run separate diagnostic tools.
+
+\section{Purpose of this Document}
+
+This document is prepared in partial fulfilment of the requirements for the
+degree of Bachelor of Science in Computer Science at the College of Computer
+Engineering and Sciences, Prince Sattam Bin Abdulaziz University. It records
+the motivation behind NetMind, the analysis and design decisions taken while
+building it, the implementation of its simulated and real-network modes, the
+testing carried out to confirm that the system behaves correctly and safely,
+and the plan for the second term of the project.
+
+The primary readers of this document are the project supervisor,
+Dr.\ Khalil Chebil, and the examining committee responsible for assessing
+this Final Year Project. It is also intended to be useful to any student or
+developer who wishes to understand, maintain, or extend NetMind in the
+future, by explaining not only what was built but why particular design
+choices were made.
+
+\section{Overview of this Document}
+
+The remainder of this document is organised as follows.
+
+Chapter~2, Literature Review, examines existing approaches to network
+management and related tools, and positions NetMind relative to them.
+
+Chapter~3, System Analysis, presents the requirements gathered for the
+project, including functional and non-functional requirements, together with
+a diagram describing how a user interacts with the system.
+
+Chapter~4, Design Considerations, discusses the constraints that shaped the
+project, the hardware and software environment used, and the development
+method followed.
+
+Chapter~5, System Design, describes the architecture of NetMind in detail:
+its layered structure, the device registry and services, the tool registry
+that connects them to the Large Language Model, the simulated Containerlab
+network, the real-network discovery mode and the live monitoring dashboard,
+together with its confirmation and audit safeguards, its persistent storage,
+and the testing carried out.
+
+Chapter~6, Conclusion, summarises what was achieved, reflects on the
+limitations of the current system, and sets out the work planned for the
+second term, followed by the References and Appendices.
