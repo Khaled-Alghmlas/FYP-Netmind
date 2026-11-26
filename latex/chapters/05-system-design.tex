@@ -593,8 +593,7 @@ Manual browser verification & Pending, Confirm and Cancel flow, protected-device
 \end{xltabular}}
 
 Static checks (ruff) and the pytest suite, with a minimum coverage of 70\%,
-run automatically in GitHub Actions on every pull request, and work is merged
-into the main branch only through pull requests. A dedicated test checks that the unit
+run automatically in GitHub Actions on every pull request. A dedicated test checks that the unit
 tests cannot reach a Docker daemon at all, which proves that they run anywhere
 without the lab or an API key. The integration test needs the
 lab and is run on demand.
