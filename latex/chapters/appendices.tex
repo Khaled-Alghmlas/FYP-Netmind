@@ -19,7 +19,10 @@ the interface, never by the language model. The server listens on
 \code{GET /api/pending} & List pending actions \\ \hline
 \code{GET /api/audit} & Audit log entries \\ \hline
 \code{GET /api/devices} & Simulated devices with id, type, IP address, branch and status \\ \hline
-\code{GET /api/alerts} & Alert history, newest first: devices going offline and back online (with downtime), firewall and camera findings \\ \hline
+\code{GET /api/alerts} & Alert history, newest first: devices going offline, degraded and back online (with downtime), firewall and camera findings \\ \hline
+\code{POST /api/alerts/\{id\}/ack} & Acknowledge an alert (records that an operator has seen it; it stays open until the device recovers) \\ \hline
+\code{GET /api/health} & The background collector's status and each device's confirmed state (up, degraded or down) \\ \hline
+\code{GET /api/events} & Server-sent event stream telling the dashboard when alerts or device states change \\ \hline
 \code{GET /api/logs} & Activity log: requested and confirmed actions, who made them, and their outcome \\ \hline
 \code{GET /api/report} & Security and reliability summary \\ \hline
 \code{POST /api/devices/\{id\}/power} & Turn a device on (runs) or off (creates a pending action) \\ \hline

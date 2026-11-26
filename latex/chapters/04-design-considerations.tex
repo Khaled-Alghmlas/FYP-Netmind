@@ -147,12 +147,13 @@ paper. At the end of September the supervisor reviewed the whole system and
 prepared an assessment and a seven-month improvement plan (October 2026 to
 April 2027) organised as monthly milestones. From October onwards the team
 therefore worked from that plan: every task became a GitHub issue, every
-change was made on its own branch and merged through a pull request that
-needed the continuous-integration checks to pass, and the work was split
+change was linked to its issue and checked automatically by continuous
+integration, and the work was split
 across three tracks (core backend, AI agent, and frontend and real network)
 so that each member has individually assessable contributions. The first two
 milestones, stabilisation (October) and the architecture refactor
-(November), are complete.
+(November), are complete, and the third, observability, planned for
+December, was also completed at the end of November.
 
 \subsection{Future Enhancements and Plans}
 
@@ -167,7 +168,6 @@ more detail.
 \hline
 \head \textbf{Area} & \textbf{Planned Enhancement} \\ \hline
 \endhead
-Observability & A background collector with a per-device state machine, so alerts are raised even when nobody has the dashboard open; diagnostic and alert-history tools for the agent \\ \hline
 Diagnosis & Reversible fault-injection scenarios and root-cause-analysis playbooks that diagnose a fault with evidence \\ \hline
 Safe change & Proactive fix suggestions, firewall snapshots with diff and rollback, and authentication with roles (NFR7) \\ \hline
 Evaluation & A benchmark of 100+ English and Arabic prompts, a comparison of LLM providers and models, load testing, and a usability study \\ \hline

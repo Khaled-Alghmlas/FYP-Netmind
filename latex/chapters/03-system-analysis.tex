@@ -230,8 +230,8 @@ device name against. Conversation history and the audit log are stored in a
 SQLite database (\code{logs/netmind.db}), so a chat session and the record of
 every tool call survive a server restart; sessions are still bounded, with a
 two-hour idle timeout, a cap of 200 sessions, and at most the system prompt
-plus the 40 most recent messages per session. The alert history is kept in
-\code{logs/alerts.json}. Device state itself, such as power status, firewall
+plus the 40 most recent messages per session. The alert history is stored in
+the same database, so it also survives a restart. Device state itself, such as power status, firewall
 rules, and camera stream status and credentials, is deliberately not
 duplicated anywhere in NetMind: it is read live from Docker and from each
 container, with only very short caches, so NetMind's picture cannot drift

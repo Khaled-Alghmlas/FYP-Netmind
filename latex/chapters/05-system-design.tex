@@ -163,9 +163,10 @@ change the camera's default password.
 \endhead
 Device status and control & Online/offline status, IP address, and idempotent power on/off for any host, firewall, camera, or router, with automatic re-attachment after power-on \\ \hline
 Network visibility & Listing every device, or every device on a specific switch/hub segment, validated against the real topology \\ \hline
-Connectivity & Pinging one lab device from another over the data network \\ \hline
+Diagnostics & Pinging one lab device from another over the data network, tracing the hop-by-hop path between them, showing the core router's routing table, and showing each interface's packet, error and drop counters and link state \\ \hline
 Firewall auditing & Listing configured iptables rules (INPUT and FORWARD chains), reporting open ports, auditing for misconfigurations, and blocking/allowing ports \\ \hline
 Camera security & Checking stream reachability independently of power state, starting/stopping the stream, and checking/changing the default password \\ \hline
+Alert history & Answering questions about the past, such as what happened to a camera overnight, by filtering recorded alerts by device, kind and period \\ \hline
 \caption{Simulated-mode capability groups (summary)}\label{tab:simcaps}\\
 \end{xltabular}}
 
@@ -478,11 +479,16 @@ the capability it needs and its risk level. The schema the model receives is
 generated from the function itself: its name, its type hints, and the
 parameter descriptions in its docstring. Adding a tool means writing one
 function; nothing else lists tools. The simulated mode currently offers
-seventeen tools, and the real mode three.
+twenty-one tools, and the real mode three. Four of them were added at the end
+of November: \code{traceroute}, \code{get\_routes} and
+\code{get\_interface\_stats} help the model locate where a connection
+breaks, and \code{get\_alerts} lets it answer questions about past events
+from the alert history. All four are read-only.
 
 \textbf{Network backends.} The \code{NetworkBackend} interface describes a
-network NetMind can talk to. \code{ContainerlabBackend} declares six
-capabilities (inventory, segments, diagnostics, power, firewall and camera);
+network NetMind can talk to. \code{ContainerlabBackend} declares seven
+capabilities (inventory, segments, diagnostics, alerts, power, firewall and
+camera);
 \code{RealLanBackend} declares only inventory. The set of tools offered to the
 model in each mode is derived from the backend's capabilities, and calling a
 tool whose capability the backend lacks raises an error in code. The
@@ -506,7 +512,8 @@ stored in a SQLite database (\code{logs/netmind.db}), created readable by its
 owner only because it contains chat text. One connection is shared by the
 server's threads and guarded by a lock. A storage failure never breaks a
 request: the agent catches it and carries on in memory. The alert history is
-kept in \code{logs/alerts.json}, so a device that is down across a restart
+stored in the same database, keyed by alert, so an alert that is later closed
+or acknowledged is updated in place; a device that is down across a restart
 keeps its original alert and its downtime keeps counting.
 
 \textbf{Running without root.} The server needs exactly two privileges: a raw
@@ -569,6 +576,29 @@ so the setup can be checked in one click. The integration is optional: without
 the two settings it does nothing, and a failure to send never breaks the
 request that triggered it.
 
+\textbf{Background collector.} In the first version, alerts were computed
+only when the dashboard asked for the device list, so a device that failed
+while nobody had the dashboard open was noticed only later. At the end of
+November a background collector was added. Every five seconds it samples
+every lab device: the state of its container, whether hosts and cameras
+answer a ping, and whether each camera's stream answers. Every 30 seconds it
+also reads CPU and memory use, which is slower to obtain. A small state
+machine turns these samples into one of three states per device:
+\emph{down} when the container is not running, \emph{degraded} when the
+device is running but a check fails (no answer to ping, a camera stream that
+does not answer, or CPU or memory use of 90\% or more), and \emph{up}
+otherwise. A device changes state only after two samples in a row agree, so
+one slow answer never raises an alert, and an alert is raised only on a
+change of state, never repeatedly for a device that stays down. Losing a
+router or firewall is classed as critical, because it cuts off a whole
+branch. If NetMind cannot read the lab at all, for example because the Docker
+daemon is unavailable, the round changes nothing, so no device is marked down
+because NetMind itself could not look. The collector's view is available at
+\code{/api/health}, and the dashboard is told about every change through a
+server-sent event stream (\code{/api/events}) rather than waiting for its
+next poll. An operator can also acknowledge an alert to record that someone
+is dealing with it; it stays open until the device recovers.
+
 The web server accepts requests only from its own origin and listens on the
 local machine only. A request carrying a different \code{Origin} header is
 refused, so a web page open in the same browser cannot power a device off or
@@ -585,7 +615,7 @@ Verification used four layers, summarised in Table~\ref{tab:verification}.
 \hline
 \head \textbf{Layer} & \textbf{What it checks} & \textbf{Result} \\ \hline
 \endhead
-Unit and endpoint tests (pytest, 153 test functions in 17 files) & Argument parsing, session pruning and history trimming, the guard (pending, confirm, cancel, expiry, protected acknowledgement, password redaction), the retry safety net, the tool registry and generated schemas, backend capabilities, the services with a fake Docker layer, firewall rule parsing and rule application on both chains, SQLite storage, settings, the permission helper's argument checks, the merged real-network scan, API endpoints, and dashboard caching & All passing in CI, with test coverage of at least 70\% enforced \\ \hline
+Unit and endpoint tests (pytest, 215 test functions in 20 files) & Argument parsing, session pruning and history trimming, the guard (pending, confirm, cancel, expiry, protected acknowledgement, password redaction), the retry safety net, the tool registry and generated schemas, backend capabilities, the services with a fake Docker layer, firewall rule parsing and rule application on both chains, SQLite storage, settings, the permission helper's argument checks, the merged real-network scan, the background collector's state machine and alerts, the diagnostic and alert-history tools, API endpoints, and dashboard caching & All passing in CI, with test coverage of at least 70\% enforced \\ \hline
 Browser UI tests (Playwright, 3 tests) & The real web server with a fake Docker layer, driven by a headless browser: powering a device off without its status flashing back online, the alert history, logs and report after an outage, and the chat view & Passing in CI \\ \hline
 Integration test against the live lab (1 test) & A block rule on a firewall really stops traffic between branches, and the allow rule restores it & Passed on the team's lab \\ \hline
 Manual browser verification & Pending, Confirm and Cancel flow, protected-device acknowledgement, audit log entries, power buttons after off/on, Arabic view, Real Network mode device list with \code{found\_by} & Passed \\ \hline
@@ -616,7 +646,9 @@ the reply was in the language of the request, and whether any destructive
 action ran without confirmation. Every pending action it creates is cancelled
 straight away, so the lab is left unchanged. The pilot was run once, on
 26~November~2026, against the simulated lab with the \code{openai/gpt-oss-120b}
-model on Groq. Table~\ref{tab:pilot} summarises the results.
+model on Groq, shortly before the four diagnostic and alert-history tools
+were added; it therefore covers the seventeen tools that existed at the time.
+Table~\ref{tab:pilot} summarises the results.
 
 {\small
 \begin{xltabular}{\textwidth}{|L{5.2cm}|Y|Y|Y|}

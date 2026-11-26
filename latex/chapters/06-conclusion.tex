@@ -21,9 +21,11 @@ the model behaved correctly in 27 cases, answered every request in the
 language it was asked in, and no destructive action ran without the user's
 confirmation.
 
-Because development started early, the team also completed the first two
+Because development started early, the team also completed the first three
 milestones of the supervisor's improvement plan within this term:
-stabilisation (October) and the architecture refactor (November).
+stabilisation (October), the architecture refactor (November) and, ahead of
+its December target, observability, which added a background collector and
+diagnostic and alert-history tools for the agent.
 Figure~\ref{fig:scope} places what was actually built against what remains
 for Project 2, and Table~\ref{tab:coverage} summarises, capability area by
 capability area, how the requirements gathered in Chapter~3 were met.
@@ -40,6 +42,8 @@ capability area, how the requirements gathered in Chapter~3 were met.
       \item Real-network discovery: ARP, ping, IPv6, mDNS (read-only)
       \item Bilingual (EN/AR) chat with evidence view
       \item Live dashboard, alert history, Telegram alerts
+      \item Background collector with UP/DEGRADED/DOWN states
+      \item Diagnostic \& alert-history tools (21 tools)
       \item Confirmation step, protected devices \& audit log
       \item Services, backends, tool registry, model provider
       \item SQLite storage; server runs without root
@@ -48,15 +52,13 @@ capability area, how the requirements gathered in Chapter~3 were met.
   \node[draw,rounded corners=3pt,text width=6.0cm,inner sep=7pt,align=left,right=1.4cm of p1.north east,anchor=north west] (p2) {%
     {\large\bfseries\color{nextred}Project 2 (planned)}\par\smallskip
     \begin{itemize}[leftmargin=1.1em,itemsep=1pt,topsep=2pt]
-      \item Background collector \& real-time alert state machine
-      \item Diagnostic and alert-history tools for the agent
       \item Fault injection \& root-cause analysis
       \item Proactive fixes, firewall rollback
       \item Authentication and roles
       \item MCP server and a hardened agent harness
       \item Benchmark, model comparison, usability study
     \end{itemize}};
-  \draw[->,thick] (p1.east) -- (p2.west |- p1.east);
+  \draw[->,thick] (p1.east |- p2.west) -- (p2.west);
 \end{tikzpicture}
 \caption{Project 1 (achieved) scope against Project 2 (planned) scope}
 \label{fig:scope}
@@ -87,18 +89,13 @@ Authentication (NFR7) & Planned for Project 2 \\ \hline
 
 \section{Limitations}
 
-Four limitations were deliberately accepted in Project 1 rather than left
+Three limitations were deliberately accepted in Project 1 rather than left
 unnoticed. The first is that the web interface does not yet authenticate its
 users (NFR7). The server only listens on the local machine and refuses
 requests from other origins, which keeps it safe on a single laptop, but it
 assumes one trusted operator.
 
-The second is that alerts are computed when the dashboard asks for the device
-list, every few seconds, rather than by a background process. While nobody
-has the dashboard open, a device that goes down is only noticed when the
-dashboard is opened again, and detection time is therefore not yet measured.
-
-The third is an architectural trade-off described in Chapter~3: device state
+The second is an architectural trade-off described in Chapter~3: device state
 such as power status, firewall rules, and camera credentials is read live from
 Docker rather than stored in a database of NetMind's own. Only very short
 caches are used (three seconds for the device list, ten seconds for audits),
@@ -108,16 +105,17 @@ reachable Docker daemon and live containers, which is acceptable for a
 lab-scale deployment but would need to be revisited if NetMind were ever
 asked to manage a larger or longer-lived network.
 
-The fourth is that the agent's accuracy has only been measured on a small
+The third is that the agent's accuracy has only been measured on a small
 scale. The pilot evaluation in Section~\ref{sec:pilot} used 28 prompts, one
 run and one model; it gives encouraging results but cannot show how
 consistent the model is across runs or how it compares with others. The same
 pilot showed a median response time of about 9.5~seconds, which is longer
 than intended and not yet broken down into model and tool time.
 
-One limitation listed at the end of the first design, that conversation
-history was held only in memory and lost on restart, has since been resolved
-by the SQLite storage described in Chapter~5.
+Two limitations listed earlier have since been resolved: conversation
+history, once held only in memory and lost on restart, is now kept in the
+SQLite storage described in Chapter~5, and alerts, once computed only while
+the dashboard was open, are now raised by the background collector.
 
 {\small
 \begin{xltabular}{\textwidth}{|Y|Y|}
@@ -125,8 +123,7 @@ by the SQLite storage described in Chapter~5.
 \head \textbf{Limitation} & \textbf{Planned Resolution} \\ \hline
 \endhead
 No authentication on the web interface & Authentication with viewer, operator and admin roles (\#31) \\ \hline
-Alerts depend on the dashboard being open & Background collector with a per-device state machine (\#19) \\ \hline
-Device state read live from Docker & Kept for the lab; the collector stores history and metrics (\#19) \\ \hline
+Device state read live from Docker & Kept for the lab; storing metrics over time is a possible extension \\ \hline
 Accuracy measured only in a 28-prompt pilot; slow replies & Prompt benchmark with repeated runs, model comparison, latency breakdown and usability study (\#34--\#38) \\ \hline
 \caption{Limitations and their planned resolution}\label{tab:limitations}\\
 \end{xltabular}}
@@ -134,7 +131,7 @@ Accuracy measured only in a 28-prompt pilot; slow replies & Prompt benchmark wit
 \section{Future Work}
 
 Project 2 continues the supervisor's seven-month plan, which is tracked as
-GitHub issues (issue numbers are given in brackets). Milestones M1 and M2 were
+GitHub issues (issue numbers are given in brackets). Milestones M1 to M3 were
 completed this term; the remaining milestones, adjusted to the academic
 calendar, are listed in Table~\ref{tab:roadmap}.
 
@@ -143,7 +140,6 @@ calendar, are listed in Table~\ref{tab:roadmap}.
 \hline
 \head \textbf{Milestone} & \textbf{Planned Work} \\ \hline
 \endhead
-M3: Observability & A background collector checking container state, reachability and camera streams on a schedule, with a per-device UP/DEGRADED/DOWN state machine, debounced alerts and stored history (\#19); diagnostic and alert-history tools for the agent, such as traceroute and routing tables (\#22, \#23) \\ \hline
 M4: Diagnosis & Reversible fault-injection scenarios such as a link going down, packet loss, a stopped service or a firewall misconfiguration (\#25); root-cause-analysis playbooks that diagnose a fault step by step with evidence (\#26) \\ \hline
 M5: Safe change & Proactive suggestions and remediation playbooks, always through the confirmation flow (\#29); firewall snapshots, diff, dry run and rollback (\#30); authentication and roles (\#31); new-device detection on the real network (\#32) \\ \hline
 M6: Evaluation & A benchmark of more than 100 English and Arabic prompts measuring tool-selection accuracy, latency and safety (\#34, \#38); comparison of LLM providers and models (\#35); failure and load testing (\#36); a usability study (\#37) \\ \hline
@@ -180,9 +176,9 @@ reference against the Project 2 work that follows it.
   \foreach \m/\i in {September/0,October/1,November/2,December/3}{
     \fill[headgray] (\i,0) rectangle (\i+1,-0.8);
     \node[font=\small\bfseries] at (\i+0.5,-0.4) {\m};
-    \draw[black!25] (\i,0) -- (\i,6.4);
+    \draw[black!25] (\i,0) -- (\i,7.0);
   }
-  \draw[black!25] (4,0) -- (4,6.4);
+  \draw[black!25] (4,0) -- (4,7.0);
   % \ph{start}{end}{row}{colour}{text}  (x in months from 1 September)
   % \ph{start}{end}{row}{colour}{text}: bar in months from 1 September, label to its right
   \newcommand{\ph}[5]{\draw[rounded corners=2pt,fill=#4] (#1,#3-0.3) rectangle (#2,#3+0.3);
@@ -192,8 +188,10 @@ reference against the Project 2 work that follows it.
   \ph{0.55}{1.25}{2.6}{orange!35}{Real mode \& live dashboard}
   \ph{1.0}{2.0}{3.5}{yellow!45}{M1: safety, tests, CI, \code{make up}}
   \ph{2.0}{2.75}{4.4}{red!30}{M2: refactor, SQLite, merged scan}
-  \draw[rounded corners=2pt,fill=black!15] (2.7,5.0) rectangle (3.6,5.6);
-  \node[anchor=east,font=\footnotesize] at (2.7,5.3) {Report \& presentation};
+  \draw[rounded corners=2pt,fill=violet!25] (2.75,5.0) rectangle (2.98,5.6);
+  \node[anchor=east,font=\footnotesize] at (2.75,5.3) {M3: background collector, diagnostic tools};
+  \draw[rounded corners=2pt,fill=black!15] (2.7,5.9) rectangle (3.6,6.5);
+  \node[anchor=east,font=\footnotesize] at (2.7,6.2) {Report \& presentation};
 \end{tikzpicture}
 \caption{Project 1 timeline, by phase}
 \label{fig:timeline}
@@ -202,6 +200,6 @@ reference against the Project 2 work that follows it.
 Taken together, Project 1 delivered a working, demonstrated system covering
 both of NetMind's operating modes, together with the safety, storage and
 testing foundations that the planned work depends on. The remaining work is
-to make NetMind observe the network on its own, diagnose faults, change it
-safely, and measure how well it does so; it extends what already exists
+to make NetMind diagnose faults, change the network safely, and measure how
+well it does so; it extends what already exists
 rather than redesigning it.
