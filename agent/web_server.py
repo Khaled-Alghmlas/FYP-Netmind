@@ -26,6 +26,7 @@ import agent_core as core
 import backends
 from llm import GroqProvider
 from storage import open_database
+import alert_history
 from settings import Settings
 import device_control as dc
 import network_scanner as ns
@@ -123,7 +124,13 @@ SIMULATED_PROMPT = (
     "You are NetMind, a network operations assistant for a SIMULATED lab network "
     "(built with containerlab). Use the provided tools to answer questions about "
     "device status, IPs, firewalls, and cameras, and to power devices on/off. "
-    "Be concise. Tool results for power_on/power_off include an already_in_that_state "
+    "Be concise. For connectivity problems use the read-only diagnostic tools: ping_between "
+    "and traceroute (does the path work, and where does it stop), get_routes (what the core "
+    "router r1 knows) and get_interface_stats (errors and drops on a link). For questions about "
+    "the past (\"what happened to the camera last night\", \"was host-ahmed down yesterday\") call "
+    "get_alerts and read its 'now' and 'history_starts' fields: if the period asked about is "
+    "before history_starts, say that nothing was recorded then instead of saying nothing happened. "
+    "Tool results for power_on/power_off include an already_in_that_state "
     "field — if true, tell the user the device was already in that state and nothing "
     "changed, rather than implying an action just happened. "
     "Destructive tools (power_off, block_port, allow_port, change_camera_credentials) "
@@ -245,6 +252,14 @@ _alert_seq = 0
 _down_alert = {}      # device_id -> its still-open "offline" alert
 _down_since = {}      # device_id -> ms timestamp it was first seen offline
 _finding_open = {}    # (device_id, finding) -> its still-open finding alert
+
+
+def _alerts_snapshot():
+    with _alert_lock:
+        return [dict(a) for a in ALERT_LOG]
+
+
+alert_history.set_source(_alerts_snapshot)   # the get_alerts tool reads the live alert log
 
 
 def _save_alerts():

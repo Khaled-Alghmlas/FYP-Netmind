@@ -412,7 +412,9 @@ body[data-net-mode="real"] .sim-only { display: none; }
     .section-title { display: none; }
 }
 
-    </style>
+        .msg-code { margin: 6px 0; padding: 10px 12px; border-radius: 8px; overflow-x: auto;
+                background: rgba(127,127,127,0.12); font-size: 0.85em; line-height: 1.45; white-space: pre; direction: ltr; text-align: left; }
+</style>
 </head>
 
 <body>
@@ -1107,7 +1109,14 @@ body[data-net-mode="real"] .sim-only { display: none; }
         var i = 0;
         var hasTable = false;
         while (i < lines.length) {
-            if (isTableRow(lines[i]) && lines[i + 1] !== undefined && isSeparatorRow(lines[i + 1])) {
+            if (/^\s*```/.test(lines[i])) {
+                // a ``` code block (routing tables, command output): shown as-is, monospaced
+                var code = [];
+                var k = i + 1;
+                while (k < lines.length && !/^\s*```/.test(lines[k])) { code.push(lines[k]); k++; }
+                html += '<pre class="msg-code"><code>' + escapeHtml(code.join("\n")) + "</code></pre>";
+                i = k + 1;
+            } else if (isTableRow(lines[i]) && lines[i + 1] !== undefined && isSeparatorRow(lines[i + 1])) {
                 hasTable = true;
                 var tableLines = [lines[i], lines[i + 1]];
                 var j = i + 2;

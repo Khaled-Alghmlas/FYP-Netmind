@@ -93,7 +93,7 @@ class NetworkBackend(ABC):
 class ContainerlabBackend(NetworkBackend):
     """The simulated lab: full control through Docker / Containerlab."""
     name = "simulated"
-    capabilities = frozenset({Cap.INVENTORY, Cap.SEGMENTS, Cap.DIAGNOSTICS,
+    capabilities = frozenset({Cap.INVENTORY, Cap.SEGMENTS, Cap.DIAGNOSTICS, Cap.ALERTS,
                               Cap.POWER, Cap.FIREWALL, Cap.CAMERA})
 
     def implementations(self):

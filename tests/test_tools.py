@@ -11,6 +11,7 @@ EXPECTED_TOOLS = {
     "power_on", "power_off", "list_firewall_rules", "get_open_ports", "audit_firewall",
     "block_port", "allow_port", "get_camera_stream_status", "start_camera_stream",
     "stop_camera_stream", "check_camera_credentials", "change_camera_credentials",
+    "traceroute", "get_routes", "get_interface_stats", "get_alerts",     # issue #23
 }
 
 

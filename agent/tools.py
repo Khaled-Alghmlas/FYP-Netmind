@@ -19,7 +19,8 @@ class Cap:
     """What a network backend can do (see backends.py)."""
     INVENTORY = "inventory"      # list devices, status, address lookup
     SEGMENTS = "segments"        # which devices sit behind a switch/hub
-    DIAGNOSTICS = "diagnostics"  # ping between devices
+    DIAGNOSTICS = "diagnostics"  # ping, traceroute, routes and interface counters (read-only)
+    ALERTS = "alerts"            # read the alert history
     POWER = "power"              # power devices on/off
     FIREWALL = "firewall"        # read and change firewall rules
     CAMERA = "camera"            # camera stream and credentials

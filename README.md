@@ -102,7 +102,8 @@ graph TD
 ├── agent/
 │   ├── agent_core.py          # Tool-calling loop, sessions, confirmation guard, audit log
 │   ├── device_control.py      # Control and inspect simulated lab devices
-│   ├── lab_network.py         # ping_between, re-attach a device to its switch after power-on
+│   ├── alert_history.py       # get_alerts: read-only filter over the alert history
+│   ├── lab_network.py         # ping_between, traceroute, get_routes, get_interface_stats, re-attach a device after power-on
 │   ├── network_scanner.py     # Discover and check devices on the real LAN
 │   ├── web_server.py          # FastAPI backend, REST API, alerts, Telegram notifications
 │   ├── netmind_agent.py       # Older terminal REPL (simulated mode, basic tools only)
@@ -138,7 +139,8 @@ graph TD
 | Area | What you can ask |
 |---|---|
 | Devices | Status, IP, list all devices, list devices on a switch/hub, power on, power off. Names can be a device id (`host-ahmed`) or an owner (`ahmed`), and small typos are tolerated. |
-| Connectivity | `ping_between` two lab devices over the lab network (not the management network). |
+| Connectivity (read-only) | `ping_between` and `traceroute` between two lab devices over the lab network (not the management network); `get_routes` shows the routing table of `r1` (via `vtysh`); `get_interface_stats` shows packets, errors, drops and link state of a device's interfaces. |
+| History | `get_alerts` answers questions about the past, e.g. "what happened to cam-khalid last night?" (offline / back-online with downtime, firewall and camera findings). Alerts are recorded while the dashboard is polling, so history starts from the first poll. |
 | Firewalls (`fw-branch1/2/3`) | List live `iptables` rules, show open ports, audit for sensitive ports (SSH, Telnet, FTP, RDP) open to any source, block or allow a port. |
 | Cameras (`cam-khalid`, `cam-ahmed`, `cam-fahad`) | Check whether the stream answers over HTTP, start or stop the stream, check for the default password, change the password. |
 

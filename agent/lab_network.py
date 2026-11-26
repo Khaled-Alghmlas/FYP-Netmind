@@ -6,6 +6,10 @@ reconnect_device(id)  re-attaches a host/camera to its switch/hub after a power
 ping_between(a, b)    pings device b from device a over the lab (data-plane)
                       address. The management address is NOT used: it survives a
                       power cycle and would hide a broken link.
+traceroute(a, b)      the hop-by-hop path from device a to device b (lab addresses)
+get_routes()          the routing table of the router r1, read through FRR's vtysh
+get_interface_stats() per-interface packet/error/drop counters and link state of a device
+All three are read-only: they only look, they never change the lab.
 """
 import os
 import re
@@ -168,3 +172,147 @@ def ping_between(src, dst, count=3):
     sent, received = (int(m.group(1)), int(m.group(2))) if m else (count, 0)
     return {"from": a["id"], "to": b["id"], "to_ip": ip,
             "sent": sent, "received": received, "reachable": received > 0}
+
+
+# --- read-only diagnostics (issue #23) ---------------------------------------------------------
+ROUTER_ID = "r1"
+_MAX_OUTPUT_LINES = 80
+_HOP_LINE = re.compile(r"^\s*(\d+)\s+(.*)$")
+_IPV4 = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b")
+_RTT = re.compile(r"([\d.]+)\s*ms")
+
+
+def _one_running(name):
+    """-> (device, container, None) for a name matching exactly one powered-on device, or
+    (None, None, {"error": ...}) saying why not."""
+    matches = dc.find_devices(name)
+    if len(matches) != 1:
+        return None, None, {"error": "name must match exactly one device", "matches": [d["id"] for d in matches]}
+    dev = matches[0]
+    try:
+        container = dc._client.containers.get(dev["container"])
+        container.reload()
+    except docker.errors.NotFound:
+        return None, None, {"error": f"{dev['id']} not found"}
+    if container.status != "running":
+        return None, None, {"error": f"{dev['id']} is powered off"}
+    return dev, container, None
+
+
+def _text(output):
+    return output.decode(errors="replace") if isinstance(output, (bytes, bytearray)) else str(output or "")
+
+
+def _cap_lines(text, limit=_MAX_OUTPUT_LINES):
+    lines = [line.rstrip() for line in text.splitlines() if line.strip()]
+    return lines[:limit] + ([f"... ({len(lines) - limit} more lines)"] if len(lines) > limit else [])
+
+
+def _parse_hops(text):
+    """traceroute output -> [{"hop": 1, "ip": "10.1.0.1", "rtt_ms": 0.4}, ...]. A hop that never
+    answered ('* * *') has ip None. Header lines ('traceroute to ...') are skipped."""
+    hops = []
+    for line in text.splitlines():
+        m = _HOP_LINE.match(line)
+        if not m:
+            continue
+        rest = m.group(2)
+        ip, rtt = _IPV4.search(rest), _RTT.search(rest)
+        hops.append({"hop": int(m.group(1)), "ip": ip.group(1) if ip else None,
+                     "rtt_ms": float(rtt.group(1)) if rtt else None})
+    return hops
+
+
+def traceroute(src, dst, max_hops=8):
+    """Traces the path from src to dst over the lab network (the dst lab address, not management)."""
+    max_hops = max(1, min(int(max_hops), 15))
+    a, b = dc.find_devices(src), dc.find_devices(dst)
+    if len(a) != 1 or len(b) != 1:
+        return {"error": "src and dst must each match exactly one device",
+                "src_matches": [d["id"] for d in a], "dst_matches": [d["id"] for d in b]}
+    ip = b[0].get("network_ip")
+    if not ip:
+        return {"error": f"{b[0]['id']} has no lab address in registry.json"}
+    dev, container, err = _one_running(a[0]["id"])
+    if err:
+        return err
+    code, out = container.exec_run(["traceroute", "-n", "-m", str(max_hops), "-w", "1", "-q", "1", ip])
+    text = _text(out)
+    if code in (126, 127):
+        return {"error": f"traceroute is not available inside {dev['id']}"}
+    hops = _parse_hops(text)
+    result = {"from": dev["id"], "to": b[0]["id"], "to_ip": ip, "hops": hops,
+              "reached": bool(hops) and hops[-1]["ip"] == ip}
+    if not hops:
+        result["output"] = _cap_lines(text, 10)
+    return result
+
+
+_PREFIX = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}/\d{1,2}\b")
+_NEXTHOP_LINE = re.compile(r"^\s+\*?\s*via\s")
+
+
+def _route_lines(text):
+    """Only the route entries of `show ip route`: the codes legend and vtysh notices such as
+    "% Can't open configuration file /etc/frr/vtysh.conf" are dropped. Falls back to every
+    line if nothing looks like a route, so an unexpected format is still shown."""
+    routes = [line for line in text.splitlines() if _PREFIX.search(line) or _NEXTHOP_LINE.match(line)]
+    return _cap_lines("\n".join(routes)) if routes else _cap_lines(text)
+
+
+def get_routes():
+    """Routing table of the router r1: FRR's `vtysh -c "show ip route"`. If vtysh does not work
+    (FRR daemons not running) the kernel table from `ip route` is returned instead, and says so."""
+    dev, container, err = _one_running(ROUTER_ID)
+    if err:
+        return err
+    code, out = container.exec_run(["vtysh", "-c", "show ip route"])
+    if code == 0 and _text(out).strip():
+        return {"router": dev["id"], "source": "vtysh", "routes": _route_lines(_text(out))}
+    code2, out2 = container.exec_run(["ip", "route"])
+    if code2 != 0:
+        return {"error": f"could not read the routes of {dev['id']}", "detail": _text(out)[-200:]}
+    return {"router": dev["id"], "source": "ip route",
+            "warning": "vtysh did not answer, so this is the kernel routing table",
+            "routes": _cap_lines(_text(out2))}
+
+
+_STATS_CMD = ("cat /proc/net/dev; for i in /sys/class/net/*; do "
+              "echo \"STATE $(basename $i) $(cat $i/operstate 2>/dev/null)\"; done")
+_COUNTERS = ("rx_bytes", "rx_packets", "rx_errors", "rx_dropped", None, None, None, None,
+             "tx_bytes", "tx_packets", "tx_errors", "tx_dropped")
+
+
+def _parse_interface_stats(text):
+    """/proc/net/dev plus the STATE lines -> {interface: {state, rx_*, tx_*}} (loopback skipped)."""
+    stats, states = {}, {}
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("STATE "):
+            parts = line.split()
+            states[parts[1]] = parts[2] if len(parts) > 2 else "unknown"
+        elif ":" in line and not line.startswith(("Inter-", "face")):
+            name, _, rest = line.partition(":")
+            values = rest.split()
+            if name.strip() == "lo" or len(values) < 12:
+                continue
+            stats[name.strip()] = {key: int(v) for key, v in zip(_COUNTERS, values) if key}
+    for name, entry in stats.items():
+        entry["state"] = states.get(name, "unknown")
+    return stats
+
+
+def get_interface_stats(device, interface=""):
+    """Packet, error and drop counters (and link state) of a device's network interfaces."""
+    dev, container, err = _one_running(device)
+    if err:
+        return err
+    code, out = container.exec_run(["sh", "-c", _STATS_CMD])
+    stats = _parse_interface_stats(_text(out)) if code == 0 else {}
+    if not stats:
+        return {"error": f"could not read the interface counters of {dev['id']}"}
+    if interface:
+        if interface not in stats:
+            return {"error": f"{dev['id']} has no interface '{interface}'", "interfaces": sorted(stats)}
+        stats = {interface: stats[interface]}
+    return {"device": dev["id"], "interfaces": stats}

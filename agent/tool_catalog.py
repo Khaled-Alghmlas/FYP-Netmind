@@ -65,6 +65,57 @@ def ping_between(src: str, dst: str, count: int = 3):
     return lab_network.ping_between(src, dst, count)
 
 
+@tool(Cap.DIAGNOSTICS)
+def traceroute(src: str, dst: str, max_hops: int = 8):
+    """Trace the path packets take from one lab device to another, hop by hop, over the lab (data-plane) network. Read-only. Use it to find where a connection breaks: the last hop that answers is the last working point. src and dst are device ids; each must match exactly one device.
+
+    Args:
+        src: Source device id, e.g. 'host-khalid'
+        dst: Destination device id, e.g. 'host-sara'
+        max_hops: Maximum number of hops to try, 1-15 (default 8)
+    """
+    import lab_network
+    return lab_network.traceroute(src, dst, max_hops)
+
+
+@tool(Cap.DIAGNOSTICS)
+def get_routes():
+    """Show the routing table of the core router r1 (read through FRR's vtysh): which networks it reaches and through which next hop and interface. Read-only. Use it to check whether the router knows the way to a branch."""
+    import lab_network
+    return lab_network.get_routes()
+
+
+@tool(Cap.DIAGNOSTICS)
+def get_interface_stats(device: str, interface: str = ""):
+    """Show the network interface counters of a device (packets, errors and drops sent and received) and whether each link is up. Read-only. Use it to find a faulty or congested link.
+
+    Args:
+        device: Device id, e.g. 'r1' or 'fw-branch1'
+        interface: Optional interface name, e.g. 'eth1'. Leave empty for all interfaces
+    """
+    import lab_network
+    return lab_network.get_interface_stats(device, interface)
+
+
+# --- history -----------------------------------------------------------------------------
+@tool(Cap.ALERTS)
+def get_alerts(device: str = "", kind: str = "", active_only: bool = False, hours_back: int = 24,
+               start: str = "", end: str = "", limit: int = 20):
+    """Look up past alerts (device offline / back online with the downtime, firewall and camera findings), newest first. Read-only. Use it for questions about the past, such as what happened to a camera last night. The result has 'now' (the current time) and 'history_starts' (how far back alerts are recorded): use them to read words like 'last night' or 'yesterday'.
+
+    Args:
+        device: Device id or part of it, e.g. 'cam-khalid'. Leave empty for all devices
+        kind: Optional alert kind: device_offline, device_online, firewall_finding or camera_finding
+        active_only: True to list only alerts that are still open
+        hours_back: How many hours back to look, 1-720 (default 24). Ignored when start or end is given
+        start: Optional start of the period, ISO date-time in server local time, e.g. '2026-11-24T20:00'
+        end: Optional end of the period, ISO date-time in server local time, e.g. '2026-11-25T06:00'
+        limit: Maximum number of alerts to return, 1-100 (default 20)
+    """
+    import alert_history
+    return alert_history.get_alerts(device, kind, active_only, hours_back, start, end, limit)
+
+
 # --- power -------------------------------------------------------------------------------
 @tool(Cap.POWER, Risk.ACTION)
 def power_on(name_or_owner: str):
