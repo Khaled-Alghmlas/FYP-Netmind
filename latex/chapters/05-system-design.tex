@@ -597,3 +597,67 @@ run automatically in GitHub Actions on every pull request. A dedicated test chec
 tests cannot reach a Docker daemon at all, which proves that they run anywhere
 without the lab or an API key. The integration test needs the
 lab and is run on demand.
+
+\subsection{Pilot Evaluation of the Agent}
+\label{sec:pilot}
+
+The tests above show that the code behaves correctly, but not how well the
+language model chooses what to do. A pilot evaluation was therefore run with
+\code{scripts/eval\_prompts.py}, which sends a fixed set of 28 prompts to the
+running server, 14 in English and 14 in Arabic, each in a new chat session so
+that the prompts cannot influence each other. The set contains 18 read-only
+requests covering every read tool group (status, IP address, device and
+segment listings, connectivity, firewall audit and open ports, camera
+credentials and stream), six destructive requests (power off, block a port,
+change a camera password), two requests unrelated to networks, and two
+requests to power off a device that does not exist. For each prompt the
+script records the tools the model called, the time to the reply, whether
+the reply was in the language of the request, and whether any destructive
+action ran without confirmation. Every pending action it creates is cancelled
+straight away, so the lab is left unchanged. The pilot was run once, on
+26~November~2026, against the simulated lab with the \code{openai/gpt-oss-120b}
+model on Groq. Table~\ref{tab:pilot} summarises the results.
+
+{\small
+\begin{xltabular}{\textwidth}{|L{5.2cm}|Y|Y|Y|}
+\hline
+\head \textbf{Measure} & \textbf{English} & \textbf{Arabic} & \textbf{All} \\ \hline
+\endhead
+Correct behaviour, all prompts & 13/14 (93\%) & 14/14 (100\%) & 27/28 (96\%) \\ \hline
+Correct tool, read-only requests & 8/9 & 9/9 & 17/18 (94\%) \\ \hline
+Destructive request became a pending action & 3/3 & 3/3 & 6/6 (100\%) \\ \hline
+Unrelated request refused without a tool call & 1/1 & 1/1 & 2/2 \\ \hline
+Unknown device: nothing left pending & 1/1 & 1/1 & 2/2 \\ \hline
+Reply in the language of the request & 14/14 & 14/14 & 28/28 (100\%) \\ \hline
+Destructive actions run without confirmation & 0 & 0 & 0 \\ \hline
+Time to reply, median (maximum) & 9.96\,s (23.09\,s) & 9.34\,s (20.66\,s) & 9.50\,s (23.09\,s) \\ \hline
+\caption{Pilot evaluation results (28 prompts, one run)}\label{tab:pilot}\\
+\end{xltabular}}
+
+Three observations follow from the results. First, the model chose the
+correct tool for every request but one, and Arabic requests were handled as
+well as English ones: the model behaved correctly on all 14 Arabic prompts
+and replied in Arabic each time, including a request that named the owner of
+a device in Arabic script (``\ar{سارة}'') rather than the registered English
+name, for which it still chose the right tool. The single miss was
+the English request to list every device in the lab, which the model answered
+without calling the \code{list\_devices} tool. Second, the safety design
+worked as intended. Every destructive request became a pending action and
+none ran. For the two requests to power off a device that does not exist, the
+model did call the \code{power\_off} tool, but the guard found no matching
+device in the registry and refused the call, so nothing was left waiting for
+confirmation. This is exactly the case the guard exists for: the model's
+choice was wrong, and the code, not the model, prevented any effect. Third,
+the time to a reply, a median of 9.5~seconds and at most about 23~seconds, is
+longer than the design aimed for. It includes every round trip to the cloud
+model, which can be several for one request, and the time the tools
+themselves take; a connectivity test, for example, sends several pings. The
+fastest replies, around 1.3 to 1.6~seconds, came from requests that needed a
+single tool call.
+
+The pilot has clear limits. It uses 28 prompts written by the team, a single
+run and a single model, so the percentages describe this set rather than
+NetMind's accuracy in general, and variation between runs was not measured.
+The full benchmark of more than 100 English and Arabic prompts, with repeated
+runs, a comparison of models and providers and a breakdown of where the
+response time goes, is planned for Project~2 (Chapter~6).

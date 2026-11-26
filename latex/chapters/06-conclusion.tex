@@ -15,7 +15,11 @@ combining four discovery methods, without altering them. Destructive actions
 are guarded by a confirmation step, protected devices need an extra
 acknowledgement, and every outcome is written to an audit log. A live
 dashboard, an alert history with Telegram notifications, persistent storage,
-and an automated test suite running on every change complete the system.
+and an automated test suite running on every change complete the system. In
+a pilot evaluation of 28 English and Arabic requests (Section~\ref{sec:pilot}),
+the model behaved correctly in 27 cases, answered every request in the
+language it was asked in, and no destructive action ran without the user's
+confirmation.
 
 Because development started early, the team also completed the first two
 milestones of the supervisor's improvement plan within this term:
@@ -76,6 +80,7 @@ Connectivity check between lab devices (FR14) & Met \\ \hline
 Alert notifications outside the browser (FR15) & Met \\ \hline
 Usability, performance, portability (NFR1--NFR3, NFR9--NFR13) & Met \\ \hline
 Least privilege, persistence, automated checks (NFR8, NFR14, NFR15) & Met \\ \hline
+Agent behaviour in the pilot evaluation (Table~\ref{tab:pilot}) & 27/28 correct; 0 unconfirmed actions \\ \hline
 Authentication (NFR7) & Planned for Project 2 \\ \hline
 \caption{Requirement coverage summary}\label{tab:coverage}\\
 \end{xltabular}}
@@ -103,10 +108,12 @@ reachable Docker daemon and live containers, which is acceptable for a
 lab-scale deployment but would need to be revisited if NetMind were ever
 asked to manage a larger or longer-lived network.
 
-The fourth is that the agent's accuracy has not yet been measured: the
-system is tested thoroughly, but there is no structured measurement of how
-often the model chooses the right tool with the right arguments, in English
-and in Arabic.
+The fourth is that the agent's accuracy has only been measured on a small
+scale. The pilot evaluation in Section~\ref{sec:pilot} used 28 prompts, one
+run and one model; it gives encouraging results but cannot show how
+consistent the model is across runs or how it compares with others. The same
+pilot showed a median response time of about 9.5~seconds, which is longer
+than intended and not yet broken down into model and tool time.
 
 One limitation listed at the end of the first design, that conversation
 history was held only in memory and lost on restart, has since been resolved
@@ -120,7 +127,7 @@ by the SQLite storage described in Chapter~5.
 No authentication on the web interface & Authentication with viewer, operator and admin roles (\#31) \\ \hline
 Alerts depend on the dashboard being open & Background collector with a per-device state machine (\#19) \\ \hline
 Device state read live from Docker & Kept for the lab; the collector stores history and metrics (\#19) \\ \hline
-No structured measurement of accuracy or usefulness & Prompt benchmark, model comparison and usability study (\#34--\#38) \\ \hline
+Accuracy measured only in a 28-prompt pilot; slow replies & Prompt benchmark with repeated runs, model comparison, latency breakdown and usability study (\#34--\#38) \\ \hline
 \caption{Limitations and their planned resolution}\label{tab:limitations}\\
 \end{xltabular}}
 
