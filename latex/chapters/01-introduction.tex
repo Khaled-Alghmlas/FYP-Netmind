@@ -2,14 +2,82 @@
 \chapter{Introduction}
 % ============================================================
 
-\section{Purpose of the Project}
+\section{Background and Motivation}
 
 Modern computer networks combine a wide range of devices, including routers,
-switches, firewalls, and Internet of Things equipment such as IP cameras.
-Administering and monitoring these devices normally requires operators to be
-familiar with several vendor-specific command-line interfaces, which makes
-network operations slow, error-prone, and difficult for less experienced
-staff to perform safely.
+switches, firewalls, and Internet of Things (IoT) equipment such as IP
+cameras. Administering and monitoring these devices normally requires
+operators to be familiar with several vendor-specific command-line
+interfaces and separate diagnostic tools, which makes network operations
+slow, error-prone, and difficult for less experienced staff to perform
+safely.
+
+Industry data shows how costly these errors are. The Uptime Institute's 2025
+outage analysis reports that nearly 40\% of organisations suffered a major
+outage caused by human error over the previous three years, and that the
+overwhelming majority of these involved ignored or inadequate procedures
+(Uptime Institute, 2025). The same analysis found that IT and networking
+issues rose to 23\% of impactful outages in 2024, a rise attributed to
+growing complexity, change management and misconfiguration (Dubie, 2025).
+At the same time, the people who could prevent such mistakes are scarce:
+in the 2025 ISC2 Cybersecurity Workforce Study, 88\% of more than 16,000
+respondents reported at least one significant security consequence in their
+organisation caused by a skills shortage (ISC2, 2025). Small and
+medium-sized organisations, which rarely employ a dedicated network
+engineer, feel this shortage most.
+
+Weak defaults on networked devices make the problem worse. The Mirai botnet
+showed that hundreds of thousands of IP cameras, video recorders and routers
+could be taken over simply by trying a short list of factory-default
+usernames and passwords (Antonakakis et al., 2017), a weakness that a busy
+administrator can easily overlook.
+
+Most recently, artificial intelligence has moved to the attacking side. In
+July 2026, Hugging Face disclosed that an intrusion into its production
+infrastructure had been run by an autonomous AI agent framework that carried
+out many thousands of individual actions, stealing credentials and moving
+across internal clusters (Gatlan, 2026). In October 2026, researchers used
+frontier AI models to uncover and chain decade-old memory-safety flaws in the
+PHP runtime (CVE-2026-109618 and CVE-2026-109619, known as PHP2Shell) into
+working unauthenticated remote-code-execution exploits against WordPress,
+Drupal and Joomla, on a language that powers around 70\% of all websites
+(Tzadik et al., 2026). Attacks that once took skilled humans days can now be
+found and executed at machine speed, while most networks are still
+defended at human speed, one command at a time. This gap motivates NetMind:
+an AI assistant that lets defenders act at the same speed, while a human
+stays in control of every change.
+
+\section{Problem Statement}
+
+Administrators of small and medium branch networks face four related
+problems:
+
+\begin{enumerate}[itemsep=2pt]
+  \item \textbf{Fragmented tools.} Checking a device, auditing a firewall and
+  testing a camera each need a different command-line interface or utility,
+  so even a simple question requires switching between several tools.
+  \item \textbf{High cognitive load.} Operators must remember vendor-specific
+  syntax, addresses and topology, which raises the chance of the human errors
+  described above and excludes less experienced staff.
+  \item \textbf{Risky operations.} Commands such as powering off a device or
+  changing a firewall rule take effect immediately, with no built-in second
+  check, and are often not recorded.
+  \item \textbf{AI-powered attacks.} Attackers now use AI to find and exploit
+  weaknesses faster than a human operator can react, while common weaknesses
+  such as open administrative ports and default camera passwords remain.
+\end{enumerate}
+
+Large Language Models (LLMs) offer a natural-language way out of the first
+two problems, but on their own they make the third worse: a model can
+produce confident but wrong output (Ji et al., 2023), and giving it the power
+to act without checks is listed by OWASP as a leading risk for LLM
+applications, under the name \emph{excessive agency} (OWASP Foundation,
+2024). The problem this project addresses is therefore how to give a network
+operator a single conversational interface, in Arabic or English, that can
+both inspect and change a network, without allowing the language model to
+make a change that the operator has not approved.
+
+\section{Purpose of the Project}
 
 The purpose of this project is to design and implement NetMind, a network
 operations assistant that allows a user to manage and monitor a network using
@@ -33,6 +101,74 @@ ping sweep, IPv6 neighbour discovery and mDNS. Together, these two modes
 demonstrate that a single conversational interface can be used both to learn
 and test network administration safely, and to observe a real network
 without requiring the user to run separate diagnostic tools.
+
+\section{Aims and Objectives}
+
+The aim of the project is to design, build and verify a bilingual,
+natural-language network operations assistant that can inspect and safely
+manage a network, with every change approved by a human operator.
+
+To meet this aim, the project set the following objectives for its first
+term (Project~1). The requirements that each objective leads to are given in
+brackets and defined in Chapter~3.
+
+\begin{enumerate}[label=\textbf{O\arabic*.},leftmargin=2.6em,itemsep=2pt]
+  \item Build a contained, reproducible simulated network of branches,
+  routers, firewalls, hosts and cameras with real IP addressing and routing,
+  deployable with one command (NFR5, NFR10).
+  \item Expose network operations as callable tools that an LLM can use:
+  device status and power, segment listing, connectivity tests, firewall
+  auditing and port control, and camera stream and credential checks
+  (FR1--FR6, FR14).
+  \item Provide a conversational interface that understands and answers in
+  Arabic or English and refuses requests outside network operations
+  (FR8, FR9, NFR2).
+  \item Ensure that no destructive action runs on the model's word alone,
+  through a confirmation step, protected devices and an audit log
+  (FR11--FR13, NFR6).
+  \item Extend the same interface to a real physical network in a strictly
+  read-only discovery mode (FR7, NFR4).
+  \item Provide a live monitoring dashboard with alert history and
+  notifications outside the browser (FR10, FR15).
+  \item Verify the system with automated tests that run on every change
+  (NFR15).
+\end{enumerate}
+
+Chapter~6 reports how each of these was met (Table~\ref{tab:coverage}).
+
+\section{Scope}
+
+\textbf{In scope.} A web application for a single trusted operator on the
+machine running NetMind; a simulated network built with Containerlab and
+Docker, on which both read-only and state-changing operations are allowed;
+read-only discovery of devices on the physical local network; Arabic and
+English requests; and a cloud-hosted LLM accessed through the Groq API.
+
+\textbf{Out of scope for Project~1.} Changing the state of any device on a
+real network; user authentication and roles (planned for Project~2, NFR12);
+configuring vendor operating systems such as Cisco IOS or Junos directly;
+fully autonomous action without human approval; and large or
+long-running production deployments. The work planned for Project~2 is set
+out in Chapter~6.
+
+\section{Contributions}
+
+The main contributions of this project are:
+
+\begin{itemize}[itemsep=2pt]
+  \item A working, open-source assistant that unifies device, firewall and
+  camera operations behind a single bilingual Arabic/English chat interface,
+  backed by seventeen tools.
+  \item A safety design in which destructive actions become pending actions
+  that only the user can confirm, protected devices need an extra
+  acknowledgement, and every outcome is audited, so that the language model
+  never acts without approval.
+  \item Two operating modes behind one interface: a simulated lab where
+  changes are safe to make and test, and a read-only real-network mode whose
+  read-only guarantee is enforced in code rather than by the prompt.
+  \item A reproducible test environment and an automated test suite that
+  other students can use to study or extend LLM-based network management.
+\end{itemize}
 
 \section{Purpose of this Document}
 
