@@ -8,8 +8,10 @@ agent tools, the dashboard and the tests call: each function dumps the service's
 Docker is reached lazily, so this module can be imported on a machine with no Docker.
 """
 import json
+import subprocess
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import docker
@@ -261,6 +263,81 @@ def _cached_camera_check(cam_id, ttl=10.0):
     result = check_camera_credentials(cam_id)
     _camera_cache[cam_id] = (time.monotonic(), result)
     return result
+
+
+# --- background collector (issue #19) ----------------------------------------------------
+PING_TYPES = ("host", "camera")   # routers and firewalls may drop ICMP by policy, so not pinged
+
+
+def _ping_ok(ip):
+    """True/False if `ip` answered one ping; None if ping cannot run here (unknown, not a failure)."""
+    try:
+        return subprocess.run(["ping", "-c", "1", "-W", "1", ip], capture_output=True, timeout=3).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def sample_lab(ping=True):
+    """One health sample per registry device, for the collector: container status (one Docker
+    listing for all), plus, for running devices, whether a camera's stream answers and whether
+    hosts and cameras answer a ping. The network checks run in parallel. Raises if Docker or the
+    registry cannot be read, so the collector keeps the last known states instead of marking
+    every device down."""
+    registry = _load_registry()
+    containers = {c.name: c for c in _client.containers.list(all=True)}
+    samples, checks = [], []
+    for d in registry:
+        c = containers.get(d["container"])
+        sample = {"container": "missing" if c is None else c.status}
+        samples.append((d, sample))
+        if sample["container"] != "running":
+            continue
+        if d["type"] == "camera":
+            checks.append((sample, "stream", _snapshot_ok, f"http://{d['ip']}:{CAMERA_PORT}/snapshot"))
+        if ping and d["type"] in PING_TYPES and d.get("ip"):
+            checks.append((sample, "reachable", _ping_ok, d["ip"]))
+    if checks:
+        with ThreadPoolExecutor(max_workers=min(16, len(checks))) as pool:
+            results = list(pool.map(lambda check: check[2](check[3]), checks))
+        for (sample, key, _fn, _arg), ok in zip(checks, results):
+            if ok is not None:
+                sample[key] = bool(ok)
+    return samples
+
+
+def _cpu_mem(stats):
+    """Docker stats -> {"cpu": %, "mem": %}, computed the way `docker stats` does (100% CPU is one
+    full core). Values that cannot be computed are left out."""
+    cpu, pre = stats.get("cpu_stats") or {}, stats.get("precpu_stats") or {}
+    cpu_delta = (cpu.get("cpu_usage") or {}).get("total_usage", 0) - (pre.get("cpu_usage") or {}).get("total_usage", 0)
+    sys_delta = cpu.get("system_cpu_usage", 0) - pre.get("system_cpu_usage", 0)
+    cores = cpu.get("online_cpus") or len((cpu.get("cpu_usage") or {}).get("percpu_usage") or []) or 1
+    out = {"cpu": round(cpu_delta / sys_delta * cores * 100, 1) if cpu_delta > 0 and sys_delta > 0 else 0.0}
+    mem = stats.get("memory_stats") or {}
+    usage, limit = mem.get("usage"), mem.get("limit")
+    if usage and limit:
+        cache = (mem.get("stats") or {}).get("inactive_file", 0)
+        out["mem"] = round((usage - cache) / limit * 100, 1)
+    return out
+
+
+def lab_metrics():
+    """CPU and memory use of every running lab container, {device_id: {"cpu": %, "mem": %}}.
+    `docker stats` takes about a second per container, so the calls run in parallel and the
+    collector asks for this on a slower schedule than the health samples."""
+    by_container = {d["container"]: d["id"] for d in _load_registry()}
+    targets = [c for c in _client.containers.list() if c.name in by_container]
+
+    def one(container):
+        try:
+            return by_container[container.name], _cpu_mem(container.stats(stream=False))
+        except Exception:
+            return by_container[container.name], {}
+
+    if not targets:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(8, len(targets))) as pool:
+        return dict(pool.map(one, targets))
 
 
 if __name__ == "__main__":

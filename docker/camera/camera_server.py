@@ -28,5 +28,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass  # keep container logs quiet
 
-with socketserver.TCPServer(("", PORT), Handler) as httpd:
-    httpd.serve_forever()
+class Server(socketserver.TCPServer):
+    # The server closes every connection itself, so each request leaves a socket in TIME_WAIT on
+    # port 8080 for about a minute. NetMind's collector checks /snapshot every few seconds, so
+    # without this a stream that is stopped and started again could not bind the port and stayed
+    # down ("Address already in use").
+    allow_reuse_address = True
+
+
+if __name__ == "__main__":
+    with Server(("", PORT), Handler) as httpd:
+        httpd.serve_forever()

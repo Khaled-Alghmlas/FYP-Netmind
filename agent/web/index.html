@@ -332,7 +332,12 @@ body[data-net-mode="real"] .sim-only { display: none; }
 .device-side { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; flex-shrink: 0; }
 .device-side .btn-light-netmind { padding: 4px 10px; font-size: 11.5px; }
 .alert-item.ok .dot { background: var(--success-text); }
+.alert-item.warn .dot { background: #d39e00; }
 .alert-item.closed .alert-title { color: var(--muted); }
+.alert-ack { margin-inline-start: 8px; padding: 2px 9px; font-size: 11px; border-radius: 12px; border: 1px solid var(--border);
+    background: none; color: var(--text); cursor: pointer; font-family: inherit; }
+.alert-ack:hover { border-color: var(--accent); color: var(--accent); }
+.alert-acked { margin-inline-start: 8px; font-size: 11px; color: var(--muted); }
 .alert-when { color: var(--muted); font-size: 11px; margin-top: 3px; }
 #chat-clear { align-self: flex-end; margin: 10px 16px 0; background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 20px; padding: 4px 12px; font-size: 12px; font-family: inherit; cursor: pointer; }
 #chat-clear:hover { color: var(--text); background: var(--panel); }
@@ -711,6 +716,11 @@ body[data-net-mode="real"] .sim-only { display: none; }
             return fetchJson(Api.base + "/api/report");
         },
 
+        ackAlert: function (id) {
+            return fetch(Api.base + "/api/alerts/" + encodeURIComponent(id) + "/ack", { method: "POST" })
+                .then(function (res) { return res.json(); });
+        },
+
         notifyTest: function () {
             return fetch(Api.base + "/api/notify-test", { method: "POST" }).then(function (res) { return res.json(); });
         },
@@ -817,6 +827,8 @@ body[data-net-mode="real"] .sim-only { display: none; }
             alertsHistorySub: "Every alert is kept, including devices that came back online",
             alertOffline: "Device Offline", alertOnline: "Device Back Online", alertFirewall: "Firewall Finding",
             alertWentOffline: "went offline", alertBackAfter: "is back online after", agoSuffix: " ago",
+            alertDegraded: "Device Degraded", alertRecovered: "Device Recovered", alertHealthyAfter: "is healthy again after",
+            ackBtn: "Acknowledge", acked: "Acknowledged", statusDegraded: "Degraded",
             sendTestAlert: "Send Test Alert",
             testAlertSent: "Test alert sent to Telegram — check the bot chat.",
             testAlertNotConfigured: "Telegram isn't configured yet — set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in agent/.env and restart the server.",
@@ -902,6 +914,8 @@ body[data-net-mode="real"] .sim-only { display: none; }
             alertsHistorySub: "كل التنبيهات محفوظة، بما فيها عودة الأجهزة للاتصال",
             alertOffline: "جهاز غير متصل", alertOnline: "عاد الجهاز للاتصال", alertFirewall: "ملاحظة على جدار الحماية",
             alertWentOffline: "انقطع اتصاله", alertBackAfter: "عاد للاتصال بعد", agoSuffix: "",
+            alertDegraded: "أداء الجهاز متدهور", alertRecovered: "تعافى الجهاز", alertHealthyAfter: "عاد سليماً بعد",
+            ackBtn: "استلام", acked: "تم الاستلام", statusDegraded: "متدهور",
             sendTestAlert: "إرسال تنبيه تجريبي",
             testAlertSent: "تم إرسال تنبيه تجريبي لتليجرام — تحقق من محادثة البوت.",
             testAlertNotConfigured: "تليجرام مو مضبوط بعد — حط TELEGRAM_BOT_TOKEN و TELEGRAM_CHAT_ID بملف agent/.env وأعد تشغيل السيرفر.",
@@ -1078,7 +1092,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
     var chatEl, welcomeEl, inputBox, sendBtn, examplesEl;
 
     function escapeHtml(str) {
-        return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     }
     function isTableRow(line) { return /^\s*\|.*\|\s*$/.test(line); }
     function isSeparatorRow(line) { return /^\s*\|[\s:|-]+\|\s*$/.test(line) && line.includes("-"); }
@@ -1283,7 +1297,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
         dashState.alerts.forEach(function (a) { seenAlerts[a.id] = true; });
         fresh.slice(0, 3).forEach(function (a) {
             var x = alertText(a);
-            notify(x.title + " — " + x.detail, a.kind !== "device_online");
+            notify(x.title + " — " + x.detail, !isRecovery(a));
         });
     }
 
@@ -1339,16 +1353,25 @@ body[data-net-mode="real"] .sim-only { display: none; }
         if (a.kind === "device_offline") return { title: t.alertOffline, detail: dev + " " + t.alertWentOffline };
         if (a.kind === "device_online") return { title: t.alertOnline, detail: dev + " " + t.alertBackAfter + " " + fmtDuration(a.down_seconds || 0) };
         if (a.kind === "firewall_finding") return { title: t.alertFirewall, detail: dev + ": " + translateFinding(a.finding || a.detail) };
+        if (a.kind === "device_degraded") return { title: t.alertDegraded, detail: dev + ": " + (a.reason || a.detail || "") };
+        if (a.kind === "device_recovered") return { title: t.alertRecovered, detail: dev + " " + t.alertHealthyAfter + " " + fmtDuration(a.down_seconds || 0) };
         return { title: a.title || "", detail: a.detail || "" };
     }
 
+    function isRecovery(a) { return a.kind === "device_online" || a.kind === "device_recovered"; }
+
     function alertItemHtml(a, withClock) {
-        var x = alertText(a);
-        var cls = "alert-item" + (a.kind === "device_online" ? " ok" : "") + (a.active === false && a.kind !== "device_online" ? " closed" : "");
+        var x = alertText(a), t = STRINGS[lang];
+        var cls = "alert-item" + (isRecovery(a) ? " ok" : "") + (a.severity === "warning" && a.active !== false ? " warn" : "") +
+            (a.active === false && !isRecovery(a) ? " closed" : "");
         var clock = withClock ? " · " + new Date(a.ts).toLocaleString(lang === "ar" ? "ar-SA" : "en-US") : "";
+        var ack = "";
+        if (a.acknowledged) ack = '<span class="alert-acked">✓ ' + t.acked + "</span>";
+        else if (a.active !== false && !isRecovery(a) && a.id && netMode !== "real")
+            ack = '<button class="alert-ack" data-ack-id="' + escapeHtml(String(a.id)) + '">' + t.ackBtn + "</button>";
         return '<div class="' + cls + '"><div class="alert-title"><span class="dot"></span>' + x.title + "</div>" +
-            '<div class="alert-time">' + x.detail + "</div>" +
-            '<div class="alert-when"><span class="ago" data-ts="' + a.ts + '">' + timeAgo(a.ts) + "</span>" + clock + "</div></div>";
+            '<div class="alert-time">' + escapeHtml(x.detail) + "</div>" +
+            '<div class="alert-when"><span class="ago" data-ts="' + a.ts + '">' + timeAgo(a.ts) + "</span>" + clock + ack + "</div></div>";
     }
 
     // Keeps every "x ago" label counting up without re-rendering anything.
@@ -1358,9 +1381,14 @@ body[data-net-mode="real"] .sim-only { display: none; }
         });
     }, 1000);
 
+    // A running device whose health checks fail (stream, ping, CPU) is shown as degraded.
+    function shownStatus(d) {
+        return d.status === "online" && d.health === "degraded" ? "warning" : d.status;
+    }
+
     function statusLabel(status) {
         if (status === "online") return lang === "ar" ? "متصل" : "Online";
-        if (status === "warning") return lang === "ar" ? "تحذير" : "Warning";
+        if (status === "warning") return STRINGS[lang].statusDegraded;
         return lang === "ar" ? "غير متصل" : "Offline";
     }
     function statusClass(status) {
@@ -1490,7 +1518,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
             // Don't hammer the backend (especially the slow real-network
             // scan) while the user is on the Chat view — but the Devices
             // and Logs views need the same live device list as the Dashboard.
-            if (currentView !== "dashboard" && currentView !== "devices" && currentView !== "logs") return;
+            if (currentView !== "dashboard" && currentView !== "devices" && currentView !== "logs" && currentView !== "alerts") return;
 
             // Never stack a new poll on top of one that is still running: a slow
             // backend would otherwise pile up requests and starve power/confirm calls.
@@ -1721,7 +1749,8 @@ body[data-net-mode="real"] .sim-only { display: none; }
                         foundLine +
                         '<div class="device-type-label">' + info.label + vendorLine + "</div>" +
                     "</div>" +
-                    '<div class="device-side"><span class="status ' + statusClass(d.status) + '">' + statusLabel(d.status) + "</span>" + btn + "</div>";
+                    '<div class="device-side"><span class="status ' + statusClass(shownStatus(d)) + '"' +
+                        (d.health_reason ? ' title="' + escapeHtml(d.health_reason) + '"' : "") + ">" + statusLabel(shownStatus(d)) + "</span>" + btn + "</div>";
                 grid.appendChild(card);
             });
         },
@@ -1959,6 +1988,17 @@ body[data-net-mode="real"] .sim-only { display: none; }
     function initDashboardHandlers() {
         document.getElementById("report-actions").addEventListener("click", function () { window.print(); });
 
+        // Acknowledge an alert from the dashboard card or the Alerts page.
+        ["alerts-list", "all-alerts-list"].forEach(function (listId) {
+            document.getElementById(listId).addEventListener("click", function (e) {
+                var btn = e.target.closest("[data-ack-id]");
+                if (!btn) return;
+                btn.disabled = true;
+                Api.ackAlert(btn.getAttribute("data-ack-id")).then(function () { Dashboard.refresh(); })
+                    .catch(function () { btn.disabled = false; });
+            });
+        });
+
         var testAlertBtn = document.getElementById("send-test-alert-btn");
         if (testAlertBtn) testAlertBtn.addEventListener("click", function () {
             var note = document.getElementById("telegram-status-note");
@@ -2101,6 +2141,15 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
         showView("dashboard");
         setInterval(function () { Dashboard.refresh(); }, POLL_INTERVAL_MS);
+
+        // Push updates (issue #19): the server says when alerts or device health change, so the
+        // dashboard refreshes at once instead of at its next poll. The poll above stays as a fallback.
+        if (window.EventSource) {
+            try {
+                var events = new EventSource(Api.base + "/api/events");
+                events.addEventListener("update", function () { if (netMode !== "real") Dashboard.refresh(); });
+            } catch (e) {}
+        }
     });
 })();
 </script>

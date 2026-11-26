@@ -12,3 +12,8 @@ if not os.environ.get("NETMIND_INTEGRATION"):
 # load_dotenv() does not override variables that are already set, so these empty values win.
 os.environ["TELEGRAM_BOT_TOKEN"] = ""
 os.environ["TELEGRAM_CHAT_ID"] = ""
+# The background collector (issue #19) is started by the server's lifespan; unit tests drive it
+# by hand instead of leaving a thread sampling a fake lab. Tests also never touch the developer's
+# real logs/netmind.db: they use an in-memory database.
+os.environ["NETMIND_COLLECTOR"] = "0"
+os.environ.setdefault("NETMIND_DB", ":memory:")

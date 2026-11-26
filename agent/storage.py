@@ -1,4 +1,5 @@
-"""SQLite storage for what must survive a restart: chat sessions (with their messages) and the audit log.
+"""SQLite storage for what must survive a restart: chat sessions (with their messages), the audit
+log and the alert history.
 
 Standard library only. One connection shared by the server's threads, guarded by a lock. The file
 holds chat text, so it is created readable by its owner only. A storage failure never breaks a
@@ -11,7 +12,7 @@ import threading
 from pathlib import Path
 
 StorageError = sqlite3.Error
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE sessions (
@@ -35,6 +36,17 @@ CREATE TABLE audit (
     status TEXT NOT NULL,
     result TEXT
 );
+"""
+
+# Version 2 (issue #19): the alert history moves from logs/alerts.json into the database. An alert
+# is stored whole as JSON, keyed by its id, so a changed alert (closed, acknowledged) is an upsert.
+_SCHEMA_V2 = """
+CREATE TABLE alerts (
+    id   TEXT PRIMARY KEY,
+    ts   INTEGER NOT NULL,
+    body TEXT NOT NULL
+);
+CREATE INDEX alerts_by_ts ON alerts(ts);
 """
 
 
@@ -62,7 +74,10 @@ class Database:
                 raise sqlite3.DatabaseError(
                     f"{self.path} was written by a newer NetMind (schema {version}); refusing to touch it.")
             if version == 0:
-                self._conn.executescript(_SCHEMA)
+                self._conn.executescript(_SCHEMA + _SCHEMA_V2)
+            elif version == 1:
+                self._conn.executescript(_SCHEMA_V2)
+            if version < SCHEMA_VERSION:
                 self._conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
                 self._conn.commit()
 
@@ -126,6 +141,27 @@ class Database:
     def audit_count(self):
         with self._lock:
             return self._conn.execute("SELECT COUNT(*) FROM audit").fetchone()[0]
+
+    # -- alerts --------------------------------------------------------------------------
+    def save_alerts(self, alerts):
+        """Insert new alerts and update changed ones (closed, acknowledged). Older alerts that are
+        no longer in `alerts` stay in the table: the database keeps the full history."""
+        rows = [(a["id"], int(a.get("ts") or 0), json.dumps(a, default=str)) for a in alerts if a.get("id")]
+        with self._lock, self._conn:
+            self._conn.executemany(
+                "INSERT INTO alerts(id, ts, body) VALUES (?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET ts = excluded.ts, body = excluded.body", rows)
+
+    def recent_alerts(self, limit):
+        """The newest `limit` alerts, newest first."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT body FROM alerts ORDER BY ts DESC, rowid DESC LIMIT ?", (limit,)).fetchall()
+        return [json.loads(r[0]) for r in rows]
+
+    def alert_count(self):
+        with self._lock:
+            return self._conn.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
 
 
 def open_database(path):

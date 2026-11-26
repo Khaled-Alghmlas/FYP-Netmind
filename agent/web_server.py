@@ -6,11 +6,14 @@ Supports two modes:
             (discovery + online/offline only — no power control, since we're
             just a guest on a real network, not its administrator)
 """
+import asyncio
 import json
 from contextlib import asynccontextmanager
 import os
+import queue
 import threading
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,15 +21,18 @@ from urllib.parse import urlparse, urlencode
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import agent_core as core
 import backends
 from llm import GroqProvider
-from storage import open_database
+from storage import StorageError, open_database
 import alert_history
+import collectors_path  # noqa: F401  (puts collectors/ on the import path)
+import health
+from collector import Collector
 from settings import Settings
 import device_control as dc
 import network_scanner as ns
@@ -57,6 +63,8 @@ SEVERITY_EMOJI = {"critical": "\U0001F534", "warning": "\U0001F7E1", "info": "\U
 
 ALERT_KIND_SEVERITY = {
     "device_online": "info",        # recovery
+    "device_recovered": "info",     # a degraded device is healthy again
+    "device_degraded": "warning",   # running, but a check failed (stream, ping, CPU, memory)
     "firewall_finding": "critical",  # open sensitive port / misconfiguration
     "camera_finding": "warning",     # default credentials still in use
 }
@@ -64,31 +72,91 @@ ALERT_KIND_SEVERITY = {
 PROTECTED_DEVICE_TYPES = ("firewall", "router")
 
 
-def _send_telegram(text):
-    """Fire-and-forget POST to the Telegram Bot API using only the stdlib
-    (no new dependency to install/pin in requirements.txt). Any failure is
-    logged to the console and swallowed — a notification problem should
-    never break the request that triggered it."""
+def _retry_after(error, default=3):
+    """Seconds Telegram asks us to wait after a 429 (Too Many Requests)."""
+    try:
+        return int(json.loads(error.read().decode())["parameters"]["retry_after"])
+    except Exception:
+        return default
+
+
+def _send_telegram(text, attempts=3):
+    """POST to the Telegram Bot API using only the stdlib (no new dependency to install/pin in
+    requirements.txt). If Telegram says we are sending too fast (429), wait as long as it asks and
+    try again. Any other failure is logged to the console and swallowed — a notification problem
+    should never break the request that triggered it. Returns True if the message was accepted."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        return
+        return False
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     data = urlencode({"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"}).encode()
-    try:
-        urllib.request.urlopen(urllib.request.Request(url, data=data, method="POST"), timeout=5)
-    except Exception as e:
-        print(f"[telegram] failed to send notification: {e}")
+    for attempt in range(attempts):
+        try:
+            urllib.request.urlopen(urllib.request.Request(url, data=data, method="POST"), timeout=5)
+            return True
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < attempts - 1:
+                time.sleep(min(_retry_after(e), 30))
+                continue
+            print(f"[telegram] failed to send notification: {e}")
+            return False
+        except Exception as e:
+            print(f"[telegram] failed to send notification: {e}")
+            return False
+    return False
 
 
 def _alert_severity(alert, device_type=None):
+    if alert.get("severity"):
+        return alert["severity"]
     if alert["kind"] == "device_offline":
-        return "critical" if device_type in PROTECTED_DEVICE_TYPES else "warning"
+        return health.severity(device_type, health.DOWN)
     return ALERT_KIND_SEVERITY.get(alert["kind"], "warning")
+
+
+def _local_time(ts_ms):
+    """Server local time with its UTC offset, e.g. '2026-11-26 17:40:02 +0300'."""
+    return datetime.fromtimestamp(ts_ms / 1000).astimezone().strftime("%Y-%m-%d %H:%M:%S %z")
+
+
+# Telegram refuses bursts (about one message per second per chat), and several alerts can be
+# raised at once, e.g. every finding when the server starts. So messages go through one queue
+# and one sender thread, in order, a short gap apart, instead of all at the same moment.
+TELEGRAM_GAP_SECONDS = 1.1
+_telegram_queue = queue.Queue()
+_telegram_sender = {"thread": None}
+_telegram_lock = threading.Lock()
+
+
+def _telegram_worker():
+    while True:
+        try:
+            text = _telegram_queue.get(timeout=30)
+        except queue.Empty:
+            with _telegram_lock:   # idle: let the thread end; the next message starts a new one
+                if _telegram_queue.empty():
+                    _telegram_sender["thread"] = None
+                    return
+            continue
+        _send_telegram(text)
+        time.sleep(TELEGRAM_GAP_SECONDS)
+
+
+def _send_telegram_async(text):
+    """Queue a message; never make an alert (or the collector) wait for Telegram."""
+    if not (TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID):
+        return
+    with _telegram_lock:
+        _telegram_queue.put(text)
+        if _telegram_sender["thread"] is None:
+            t = threading.Thread(target=_telegram_worker, name="netmind-telegram", daemon=True)
+            _telegram_sender["thread"] = t
+            t.start()
 
 
 def _notify_telegram_alert(alert, device_type=None, network="Simulated Lab"):
     severity = _alert_severity(alert, device_type)
     emoji = SEVERITY_EMOJI.get(severity, "⚪")
-    ts_str = datetime.fromtimestamp(alert["ts"] / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    ts_str = _local_time(alert["ts"])
     text = (
         f"{emoji} <b>NetMind Alert</b>\n"
         f"Network: {network}\n"
@@ -98,13 +166,13 @@ def _notify_telegram_alert(alert, device_type=None, network="Simulated Lab"):
         f"Details: {alert['detail']}\n"
         f"Time: {ts_str}"
     )
-    _send_telegram(text)
+    _send_telegram_async(text)
 
 
 def _notify_telegram_event(entry, network="Real Network"):
     severity = "critical" if entry["type"] == "device_lost" else "info"
     emoji = SEVERITY_EMOJI.get(severity, "⚪")
-    ts_str = datetime.fromtimestamp(entry["ts"] / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    ts_str = _local_time(entry["ts"])
     text = (
         f"{emoji} <b>NetMind Alert</b>\n"
         f"Network: {network}\n"
@@ -114,7 +182,7 @@ def _notify_telegram_event(entry, network="Real Network"):
         f"Details: {entry['detail']}\n"
         f"Time: {ts_str}"
     )
-    _send_telegram(text)
+    _send_telegram_async(text)
 
 # ---------------------------------------------------------------------------
 # Prompts. The tools themselves (schemas, risk, capability) are registered in tool_catalog.py.
@@ -247,11 +315,14 @@ def _log_event(log, event_type, device_id, device_name, detail):
 ALERT_LOG = []        # simulated-mode alert history, newest first (never removed on recovery)
 MAX_ALERTS = 500
 ALERTS_PATH = Path(__file__).resolve().parent.parent / "logs" / "alerts.json"   # None disables saving
+ALERTS_DB = DB        # alerts are stored in SQLite; without a database, in ALERTS_PATH as JSON
 _alert_lock = threading.Lock()
 _alert_seq = 0
 _down_alert = {}      # device_id -> its still-open "offline" alert
 _down_since = {}      # device_id -> ms timestamp it was first seen offline
+_degraded_alert = {}  # device_id -> its still-open "degraded" alert (issue #19)
 _finding_open = {}    # (device_id, finding) -> its still-open finding alert
+_saved_alerts = {"payload": None}   # what was last written, so an unchanged log is not rewritten
 
 
 def _alerts_snapshot():
@@ -261,33 +332,72 @@ def _alerts_snapshot():
 
 alert_history.set_source(_alerts_snapshot)   # the get_alerts tool reads the live alert log
 
+# Server-sent events: the dashboard listens on /api/events and refreshes as soon as this number
+# changes, instead of waiting for its next poll.
+_EVENTS = {"version": 0}
+
+
+def _bump_events():
+    _EVENTS["version"] += 1
+
 
 def _save_alerts():
     """Called with _alert_lock held. History survives restarts; saving never breaks a request."""
     if not ALERTS_PATH:
         return
+    payload = json.dumps(ALERT_LOG, default=str)
+    if payload == _saved_alerts["payload"]:
+        return
+    if ALERTS_DB is not None:
+        try:
+            ALERTS_DB.save_alerts(ALERT_LOG)
+            _saved_alerts["payload"] = payload
+            return
+        except StorageError:
+            pass   # fall back to the JSON file
     try:
         ALERTS_PATH.parent.mkdir(parents=True, exist_ok=True)
         tmp = ALERTS_PATH.with_suffix(".tmp")
-        tmp.write_text(json.dumps(ALERT_LOG), encoding="utf-8")
+        tmp.write_text(payload, encoding="utf-8")
         tmp.replace(ALERTS_PATH)
+        _saved_alerts["payload"] = payload
     except OSError:
         pass
 
 
-def _load_alerts():
-    """Restores saved history and the 'still open' bookkeeping, so a device that is down
-    across a restart keeps its original alert and its downtime keeps counting."""
-    global _alert_seq
-    if not ALERTS_PATH or not Path(ALERTS_PATH).exists():
-        return
+def _read_alerts_file():
     try:
         saved = json.loads(Path(ALERTS_PATH).read_text(encoding="utf-8"))
     except (OSError, ValueError):
+        return None
+    return [a for a in saved if isinstance(a, dict)] if isinstance(saved, list) else None
+
+
+def _load_alerts():
+    """Restores saved history and the 'still open' bookkeeping, so a device that is down
+    across a restart keeps its original alert and its downtime keeps counting. On the first
+    run with a database, an old logs/alerts.json is imported into it once (the file is kept)."""
+    global _alert_seq
+    if not ALERTS_PATH:
         return
-    ALERT_LOG[:] = [a for a in saved if isinstance(a, dict)][:MAX_ALERTS]
+    saved = None
+    if ALERTS_DB is not None:
+        try:
+            if ALERTS_DB.alert_count() == 0 and Path(ALERTS_PATH).exists():
+                ALERTS_DB.save_alerts(_read_alerts_file() or [])
+            saved = ALERTS_DB.recent_alerts(MAX_ALERTS)
+        except StorageError:
+            saved = None
+    if saved is None:
+        if not Path(ALERTS_PATH).exists():
+            return
+        saved = _read_alerts_file()
+        if saved is None:
+            return
+    ALERT_LOG[:] = saved[:MAX_ALERTS]
     _down_alert.clear()
     _down_since.clear()
+    _degraded_alert.clear()
     _finding_open.clear()
     for a in ALERT_LOG:
         try:
@@ -299,18 +409,25 @@ def _load_alerts():
         if a.get("kind") == "device_offline":
             _down_alert[a["device"]] = a
             _down_since[a["device"]] = a["ts"]
+        elif a.get("kind") == "device_degraded":
+            _degraded_alert[a["device"]] = a
         elif a.get("kind") in ("firewall_finding", "camera_finding"):
             _finding_open[(a["device"], a.get("finding", ""))] = a
+    _saved_alerts["payload"] = json.dumps(ALERT_LOG, default=str)
 
 
 def _add_alert(kind, title, detail, device_id=None, device_type=None, **extra):
     global _alert_seq
     _alert_seq += 1
     alert = {"id": f"a{_alert_seq}", "kind": kind, "title": title, "detail": detail,
-             "device": device_id, "ts": int(time.time() * 1000), "active": kind != "device_online"}
+             "device": device_id, "ts": int(time.time() * 1000), "active": kind not in ("device_online", "device_recovered")}
     alert.update(extra)
+    alert["severity"] = _alert_severity(alert, device_type)
+    if alert["active"]:
+        alert["acknowledged"] = False
     ALERT_LOG.insert(0, alert)
     del ALERT_LOG[MAX_ALERTS:]
+    _bump_events()
     _notify_telegram_alert(alert, device_type=device_type)  # ADDED — Telegram notification
     return alert
 
@@ -324,22 +441,58 @@ def _fmt_duration(seconds):
     return f"{seconds // 3600}h {(seconds % 3600) // 60:02d}m"
 
 
+def _open_offline(did, name, device_type=None, reason=None):
+    if did in _down_alert:
+        return
+    _down_since[did] = int(time.time() * 1000)
+    detail = f"{name} went offline" + (f": {reason}" if reason else "")
+    _down_alert[did] = _add_alert("device_offline", "Device Offline", detail, did, device_type=device_type)
+
+
+def _close_offline(did, name, device_type=None):
+    """Closes the open offline alert (kept in the history) and reports the recovery and downtime."""
+    if did not in _down_alert:
+        return
+    _down_alert.pop(did)["active"] = False
+    secs = (int(time.time() * 1000) - _down_since.pop(did, int(time.time() * 1000))) / 1000
+    _add_alert("device_online", "Device Back Online",
+               f"{name} is back online after {_fmt_duration(secs)}", did, device_type=device_type, down_seconds=round(secs, 1))
+
+
+def _open_degraded(did, device_type, reason):
+    if did in _degraded_alert:
+        return
+    _degraded_alert[did] = _add_alert("device_degraded", "Device Degraded", f"{did}: {reason}", did,
+                                      device_type=device_type, reason=reason)
+
+
+def _close_degraded(did, device_type, recovered):
+    """Closes the open degraded alert. If the device is healthy again (rather than now down),
+    the recovery is reported with how long it was degraded."""
+    if did not in _degraded_alert:
+        return
+    alert = _degraded_alert.pop(did)
+    alert["active"] = False
+    if recovered:
+        secs = (int(time.time() * 1000) - alert["ts"]) / 1000
+        _add_alert("device_recovered", "Device Recovered",
+                   f"{did} is healthy again after {_fmt_duration(secs)}", did, device_type=device_type,
+                   down_seconds=round(secs, 1))
+
+
 def _track_alerts(did, name, old_status, new_status, device_type=None):
     """Alerts are a permanent history: going offline raises one, coming back raises
     another (with how long the device was down) and the earlier one is kept, just closed."""
-    if new_status == "offline" and did not in _down_alert:
-        _down_since[did] = int(time.time() * 1000)
-        _down_alert[did] = _add_alert("device_offline", "Device Offline", f"{name} went offline", did, device_type=device_type)
-    elif new_status == "online" and did in _down_alert:
-        _down_alert.pop(did)["active"] = False
-        secs = (int(time.time() * 1000) - _down_since.pop(did, int(time.time() * 1000))) / 1000
-        _add_alert("device_online", "Device Back Online",
-                   f"{name} is back online after {_fmt_duration(secs)}", did, device_type=device_type, down_seconds=round(secs, 1))
+    if new_status == "offline":
+        _open_offline(did, name, device_type)
+    elif new_status == "online":
+        _close_offline(did, name, device_type)
 
 
 def _track_sim_status(devices):
     """Diffs the simulated-lab device list against what we last saw and raises/closes
-    alerts on any status transition. Called on every /api/devices request."""
+    alerts on any status transition. Used by /api/devices only while the background collector
+    is not running (it is the collector's job otherwise)."""
     with _alert_lock:
         for d in devices:
             did = d.get("id")
@@ -352,17 +505,59 @@ def _track_sim_status(devices):
     return devices
 
 
+def _apply_transition(t):
+    """One confirmed state change from the collector -> alerts. Called with _alert_lock held.
+    UP -> DEGRADED opens a degraded alert; anything -> DOWN opens an offline alert; leaving
+    DOWN reports the downtime; DEGRADED -> UP reports the recovery. A first observation
+    (from None) only matters if an alert from an earlier run is still open."""
+    did, dtype, to = t["device"], t.get("type"), t["to"]
+    if to != health.DEGRADED:
+        _close_degraded(did, dtype, recovered=(to == health.UP))
+    if to != health.DOWN:
+        _close_offline(did, did, dtype)
+    if to == health.DOWN:
+        _open_offline(did, did, dtype, reason=t.get("reason"))
+    elif to == health.DEGRADED:
+        _open_degraded(did, dtype, t.get("reason") or "a health check failed")
+    _last_sim_status[did] = "offline" if to == health.DOWN else "online"
+
+
+def _on_transitions(transitions):
+    """Handler for every collector round: state changes become alerts, and firewall/camera
+    findings are checked too, so all of it happens without anyone polling the API."""
+    with _alert_lock:
+        for t in transitions:
+            _apply_transition(t)
+        _save_alerts()
+    try:
+        _track_findings()
+    except Exception:
+        pass   # an unreachable firewall must not stop the health alerts
+    if transitions:
+        _bump_events()
+
+
 def _track_findings():
     current = {(dev, text): kind for dev, text, kind in dc.get_security_findings()}
     with _alert_lock:
         for key in list(_finding_open):
             if key not in current:
                 _finding_open.pop(key)["active"] = False
+                _bump_events()
         for (dev, text), kind in sorted(current.items()):
             if (dev, text) not in _finding_open:
                 title = "Camera Finding" if kind == "camera_finding" else "Firewall Finding"
                 _finding_open[(dev, text)] = _add_alert(kind, title, f"{dev}: {text}", dev, finding=text)
         _save_alerts()
+
+
+COLLECTOR = Collector(lambda: dc.sample_lab(ping=settings.collector_ping), _on_transitions,
+                      interval=settings.collector_interval, confirm=settings.collector_confirm,
+                      metrics=dc.lab_metrics)
+
+
+def _collector_on():
+    return COLLECTOR.running
 
 
 def _track_real_status(devices):
@@ -399,7 +594,10 @@ def run_query(user_input, history, tools, guard, actor, session_key, steps=None)
 @asynccontextmanager
 async def _lifespan(_app):
     _load_alerts()   # restore saved alert history before serving
+    if settings.collector_enabled:
+        COLLECTOR.start()   # samples the lab in the background, dashboard open or not
     yield
+    COLLECTOR.stop()
 
 
 router = APIRouter()
@@ -505,8 +703,9 @@ def _action_trail():
 def api_report():
     """One-page security and reliability summary for the Reports view (simulated lab)."""
     devices = dc.list_devices_dashboard()
-    _track_sim_status(devices)
-    _track_findings()
+    if not _collector_on():
+        _track_sim_status(devices)
+        _track_findings()
     with _alert_lock:
         alerts = [dict(a) for a in ALERT_LOG]
     recoveries = [a["down_seconds"] for a in alerts if a["kind"] == "device_online" and "down_seconds" in a]
@@ -560,19 +759,76 @@ class PowerRequest(BaseModel):
 
 @router.get("/api/devices")
 def api_devices():
-    """Live device list for the Dashboard (simulated lab), from registry.json + Docker."""
+    """Live device list for the Dashboard (simulated lab), from registry.json + Docker.
+    While the collector runs, each device also carries its health: up, degraded or down."""
     devices = dc.list_devices_dashboard()
-    _track_sim_status(devices)  # ADDED — feeds the Logs page
+    if _collector_on():
+        states = {s["device"]: s for s in COLLECTOR.tracker.snapshot()}
+        for d in devices:
+            s = states.get(d["id"])
+            if s and s["state"]:
+                d["health"], d["health_reason"] = s["state"], s["reason"]
+    else:
+        _track_sim_status(devices)  # no collector: detect changes on each poll, as before
     return devices
 
 
 @router.get("/api/alerts")
 def api_alerts():
     """Alert history for the Dashboard (simulated lab), newest first."""
-    _track_sim_status(dc.list_devices_dashboard())
-    _track_findings()
+    if not _collector_on():
+        _track_sim_status(dc.list_devices_dashboard())
+        _track_findings()
     with _alert_lock:
         return [dict(a) for a in ALERT_LOG]
+
+
+@router.post("/api/alerts/{alert_id}/ack")
+def api_ack_alert(alert_id: str):
+    """Marks an alert as seen by an operator ("I'm on it"). It stays open until the device
+    recovers; acknowledging only records who saw it and when."""
+    with _alert_lock:
+        alert = next((a for a in ALERT_LOG if a.get("id") == alert_id), None)
+        if alert is None:
+            return JSONResponse({"error": f"no alert '{alert_id}'"}, status_code=404)
+        if not alert.get("acknowledged"):
+            alert.update(acknowledged=True, ack_ts=int(time.time() * 1000), ack_by="dashboard")
+            _save_alerts()
+            _bump_events()
+        return dict(alert)
+
+
+@router.get("/api/health")
+def api_health():
+    """What the background collector sees: its own status and each device's confirmed state."""
+    return {"collector": {"enabled": settings.collector_enabled, **COLLECTOR.status()},
+            "devices": COLLECTOR.tracker.snapshot()}
+
+
+async def _event_stream(request, poll=1.0, keepalive=15.0, lifetime=300.0):
+    """Server-sent events: an 'update' event whenever alerts or device states change. The
+    stream ends after `lifetime` seconds and the browser reconnects by itself, so a connection
+    whose client went away silently is never kept for long."""
+    seen, started = _EVENTS["version"], time.monotonic()   # read first: no change can slip between
+    yield "retry: 3000\n\n"
+    last_sent = started
+    while time.monotonic() - started < lifetime:
+        if await request.is_disconnected():
+            break
+        version = _EVENTS["version"]
+        if version != seen:
+            seen, last_sent = version, time.monotonic()
+            yield f"event: update\ndata: {json.dumps({'version': version})}\n\n"
+        elif time.monotonic() - last_sent >= keepalive:
+            last_sent = time.monotonic()
+            yield ": keep-alive\n\n"
+        await asyncio.sleep(poll)
+
+
+@router.get("/api/events")
+async def api_events(request: Request):
+    return StreamingResponse(_event_stream(request), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @router.get("/api/logs")
