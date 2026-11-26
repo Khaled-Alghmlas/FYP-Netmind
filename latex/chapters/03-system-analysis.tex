@@ -7,9 +7,7 @@
 NetMind exposes a single actor, the User, who interacts with the system
 entirely through one web application rather than a set of separate tools or
 commands. Figure~\ref{fig:usecase} shows the use cases reachable from that
-entry point, grouped by the mode active at the time of the request. Every use
-case in Simulated Mode can change the state of the lab network, while every
-use case in Real Network Mode is read-only by design, reflecting the safety
+entry point, grouped by the mode active at the time of the request. Use cases in Simulated Mode either only read the lab state (status, listings, connectivity checks, firewall audit) or change it (power, firewall ports, camera credentials), while every use case in Real Network Mode is read-only by design, reflecting the safety
 boundary described in Chapter~5: the real-network backend has no capability
 that could alter a device outside the Containerlab lab, regardless of how a
 request is phrased. Within Simulated Mode, the use cases that change state in
@@ -19,7 +17,7 @@ explicit confirmation before they run (Section~\ref{sec:guard}).
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.78\textwidth]{use-case.png}
+\includegraphics[width=0.72\textwidth]{use-case.png}
 \caption{NetMind use case diagram}
 \label{fig:usecase}
 \end{figure}
