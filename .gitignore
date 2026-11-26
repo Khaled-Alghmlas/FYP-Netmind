@@ -23,3 +23,6 @@ logs/
 # coverage reports
 .coverage
 htmlcov/
+
+# Output of scripts/eval_prompts.py
+eval-results.json
