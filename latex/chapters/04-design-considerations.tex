@@ -110,8 +110,8 @@ and the design decision each one led to.
 \endhead
 Not a dedicated network engineer & Natural-language chat interface rather than a command-line or vendor-specific console (NFR1) \\ \hline
 Comfortable in Arabic or English, not necessarily both equally & Bilingual input and output, matching the language of each request (NFR2) \\ \hline
-Accesses the system from a standard laptop browser & No client installation; browser-only frontend (NFR11) \\ \hline
-Expects a quick answer, not a slow diagnostic tool & Low-latency LLM provider and a bounded tool-calling loop (NFR7, NFR8) \\ \hline
+Accesses the system from a standard laptop browser & No client installation; browser-only frontend (NFR13) \\ \hline
+Expects a quick answer, not a slow diagnostic tool & Low-latency LLM provider and a bounded tool-calling loop (NFR9, NFR10) \\ \hline
 May need to tell Simulated and Real Network mode apart at a glance & An always-visible control distinguishing the two modes (NFR3) \\ \hline
 Responsible for device security, not just connectivity & Firewall auditing and camera credential checks exposed as first-class capabilities (FR4, FR6) \\ \hline
 Is not always looking at the screen & Alerts kept as a history and sent to Telegram (FR10, FR15) \\ \hline
@@ -169,7 +169,7 @@ more detail.
 \endhead
 Observability & A background collector with a per-device state machine, so alerts are raised even when nobody has the dashboard open; diagnostic and alert-history tools for the agent \\ \hline
 Diagnosis & Reversible fault-injection scenarios and root-cause-analysis playbooks that diagnose a fault with evidence \\ \hline
-Safe change & Proactive fix suggestions, firewall snapshots with diff and rollback, and authentication with roles (NFR12) \\ \hline
+Safe change & Proactive fix suggestions, firewall snapshots with diff and rollback, and authentication with roles (NFR7) \\ \hline
 Evaluation & A benchmark of 100+ English and Arabic prompts, a comparison of LLM providers and models, load testing, and a usability study \\ \hline
 Integration & An MCP server exposing NetMind's tools to other AI assistants, and a hardened agent harness \\ \hline
 \caption{Planned enhancements for Project 2}\label{tab:p2plan}\\

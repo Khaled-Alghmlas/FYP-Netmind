@@ -4,6 +4,8 @@
 
 \section{Data Flow Diagrams / Use Case Diagrams}
 
+\subsection{Use Case Diagram}
+
 NetMind exposes a single actor, the User, who interacts with the system
 entirely through one web application rather than a set of separate tools or
 commands. Figure~\ref{fig:usecase} shows the use cases reachable from that
@@ -20,6 +22,179 @@ explicit confirmation before they run (Section~\ref{sec:guard}).
 \includegraphics[width=0.72\textwidth]{use-case.png}
 \caption{NetMind use case diagram}
 \label{fig:usecase}
+\end{figure}
+
+\subsection{Use Case Descriptions}
+
+Tables~\ref{tab:uc-status} to~\ref{tab:uc-scan} describe three
+representative use cases in detail: one that only reads the lab, one that
+changes it and therefore passes through the confirmation step, and one in
+Real Network Mode. The remaining use cases follow the same patterns.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L{3.2cm}|Y|}
+\hline
+\head \multicolumn{2}{|l|}{\textbf{UC-01: Check a device's status}} \\ \hline
+Actor & User \\ \hline
+Requirements & FR1, FR8, FR13 \\ \hline
+Precondition & Simulated Mode is selected and the lab is running. \\ \hline
+Main flow & 1.~The user asks, in Arabic or English, whether a device is online, naming the device or its owner. \newline
+2.~The language model calls the \code{get\_status} tool with that name. \newline
+3.~The tool resolves the name against the device registry, tolerating small spelling mistakes, and reads the device's live state from Docker. \newline
+4.~The result is returned to the model, which answers in the language of the request. \newline
+5.~The chat shows the answer with an evidence trace of the tool call. \\ \hline
+Alternative flows & A1.~The name matches no registered device: the system says so instead of guessing (FR9). \newline
+A2.~The request is not about network operations: the system politely refuses (FR9). \\ \hline
+Postcondition & No device state has changed; the tool call is recorded in the audit log. \\ \hline
+\end{tabularx}
+\caption{Use case description: check a device's status}\label{tab:uc-status}
+\end{table}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L{3.2cm}|Y|}
+\hline
+\head \multicolumn{2}{|l|}{\textbf{UC-02: Power off a device}} \\ \hline
+Actor & User \\ \hline
+Requirements & FR2, FR11, FR12, FR13, NFR6 \\ \hline
+Precondition & Simulated Mode is selected, the lab is running and the device is powered on. \\ \hline
+Main flow & 1.~The user asks to turn off a named device. \newline
+2.~The language model calls the \code{power\_off} tool. \newline
+3.~The safety guard stores a pending action and returns ``pending'' to the model; nothing has run yet. \newline
+4.~The chat shows a Confirm/Cancel box describing the action. \newline
+5.~The user presses Confirm. \newline
+6.~The guard runs the tool, which powers the device off, and records the outcome in the audit log. \newline
+7.~The reply confirms the change, and the dashboard shows the device offline at its next refresh. \\ \hline
+Alternative flows & A1.~The device is already off: the system reports this and performs no action (FR2). \newline
+A2.~The device is protected (the core router or a firewall): Confirm also requires an acknowledgement box, and the server rejects the request without it (FR12). \newline
+A3.~The user presses Cancel, or does not answer within five minutes: the pending action is discarded and recorded as cancelled or expired. \\ \hline
+Postcondition & Either the device is off and the audit log records the executed action, or nothing has changed and the audit log records why. \\ \hline
+\end{tabularx}
+\caption{Use case description: power off a device}\label{tab:uc-power}
+\end{table}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L{3.2cm}|Y|}
+\hline
+\head \multicolumn{2}{|l|}{\textbf{UC-03: Discover devices on the real network}} \\ \hline
+Actor & User \\ \hline
+Requirements & FR7, NFR4, NFR11 \\ \hline
+Precondition & Real Network Mode is selected and the machine running NetMind is connected to the local network. \\ \hline
+Main flow & 1.~The user asks which devices are on the network, or opens the devices page. \newline
+2.~The language model calls the \code{list\_devices} tool, which the real-network backend serves. \newline
+3.~The discovery module runs ARP, a ping sweep, IPv6 neighbour discovery and mDNS in parallel and merges the results. \newline
+4.~Each device is reported once, with its addresses, hostname, status and the methods that found it. \newline
+5.~The reply presents the devices as a table. \\ \hline
+Alternative flows & A1.~A discovery method cannot run, for example ARP without the raw-socket capability: it is reported as not run, and the other methods still complete. \newline
+A2.~The same question is asked again within 20 seconds: the cached result is returned immediately. \newline
+A3.~The user asks to change a real device, for example to power it off: the real-network backend has no such capability, so the request cannot be carried out (NFR4). \\ \hline
+Postcondition & No device on the real network has changed state. \\ \hline
+\end{tabularx}
+\caption{Use case description: discover devices on the real network}\label{tab:uc-scan}
+\end{table}
+
+\subsection{Data Flow Diagrams}
+
+Figure~\ref{fig:dfd0} is the context diagram (level~0) of NetMind. It shows
+the system as a single process and the five external entities it exchanges
+data with. The user is the only entity that can start an action; the
+language model only proposes tool calls, and the physical network only
+receives read-only discovery probes.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  ent/.style={draw,thick,fill=userblue,minimum width=2.9cm,minimum height=1.1cm,align=center},
+  proc/.style={draw,thick,rounded corners=8pt,fill=guardorange,minimum width=3.4cm,minimum height=2.2cm,align=center},
+  lab/.style={font=\scriptsize,align=center,inner sep=1.5pt},
+  >={Stealth[length=2mm]}]
+  \node[proc] (p) at (0,0) {\textbf{0}\\[2pt]\textbf{NetMind}};
+  \node[ent] (user) at (-5.8,0) {User};
+  \node[ent] (llm)  at (0,3.4) {Groq LLM API};
+  \node[ent] (lab)  at (5.8,0.65) {Containerlab lab\\(Docker)};
+  \node[ent] (lan)  at (5.8,-0.65) {Physical local\\network};
+  \node[ent] (tg)   at (0,-3.4) {Telegram};
+  \draw[->] (user.east |- 0,0.3) -- node[lab,above]{requests (AR/EN),\\Confirm / Cancel} (p.west |- 0,0.3);
+  \draw[<-] (user.east |- 0,-0.3) -- node[lab,below]{replies, evidence,\\dashboard, alerts} (p.west |- 0,-0.3);
+  \draw[->] (-0.6,1.1) -- node[lab,left]{messages +\\tool schemas} (-0.6,2.85);
+  \draw[<-] (0.6,1.1) -- node[lab,right]{text or\\tool call} (0.6,2.85);
+  \draw[->] (1.7,0.85) -- node[lab,above]{commands} (lab.west |- 0,0.85);
+  \draw[<-] (1.7,0.45) -- node[lab,below]{device state} (lab.west |- 0,0.45);
+  \draw[->] (1.7,-0.45) -- node[lab,above]{read-only probes} (lan.west |- 0,-0.45);
+  \draw[<-] (1.7,-0.85) -- node[lab,below]{replies} (lan.west |- 0,-0.85);
+  \draw[->] (p.south) -- node[lab,right]{alert and recovery\\notifications} (tg.north);
+\end{tikzpicture}
+\caption{Context diagram (DFD level 0)}
+\label{fig:dfd0}
+\end{figure}
+
+Figure~\ref{fig:dfd1} breaks NetMind down into four processes and three data
+stores. Process~1 runs the conversation with the language model; every tool
+call it receives passes through Process~2, where the safety guard decides
+whether it runs now or waits for the user's confirmation. Real-network tools
+are served by Process~3, which can only send discovery probes. Process~4
+builds the dashboard view, keeps the alert history and sends notifications.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  ent/.style={draw,thick,fill=userblue,minimum width=2.4cm,minimum height=0.9cm,align=center},
+  proc/.style={draw,thick,rounded corners=6pt,fill=guardorange,text width=2.9cm,minimum height=1.3cm,align=center},
+  store/.style={fill=boxgray,text width=3.5cm,minimum height=0.75cm,anchor=center,align=left,inner xsep=2mm,
+    path picture={\draw[thick] (path picture bounding box.north east) -- (path picture bounding box.north west) -- (path picture bounding box.south west) -- (path picture bounding box.south east);
+                  \draw[thick] ([xshift=7.5mm]path picture bounding box.north west) -- ([xshift=7.5mm]path picture bounding box.south west);}},
+  lab/.style={font=\scriptsize,align=center,inner sep=1pt},
+  >={Stealth[length=2mm]}]
+  % processes
+  \node[proc] (p1) at (0,0)     {\textbf{1}\\Handle chat request};
+  \node[proc] (p2) at (0,-3.2)  {\textbf{2}\\Run tool through the safety guard};
+  \node[proc] (p3) at (0,-6.4)  {\textbf{3}\\Discover real network (read-only)};
+  \node[proc] (p4) at (0,-9.6)  {\textbf{4}\\Monitor and alert};
+  % external entities
+  \node[ent] (user) at (-5.3,0)    {User};
+  \node[ent] (llm)  at (0,2.4)     {Groq LLM API};
+  \node[ent] (lab)  at (5.4,-3.2)  {Containerlab lab};
+  \node[ent] (lan)  at (5.4,-6.4)  {Physical local\\network};
+  \node[ent] (tg)   at (-4.0,-11.6) {Telegram};
+  % data stores
+  \node[store,text width=4.3cm] (d2) at (6.05,0)     {\textbf{D2}\hspace{4.5mm}Sessions \& audit log};
+  \node[store] (d1) at (-3.9,-5.0) {\textbf{D1}\hspace{4.5mm}Device registry};
+  \node[store] (d3) at (4.0,-11.6) {\textbf{D3}\hspace{4.5mm}Alert history};
+  % process 1
+  \draw[->] (-0.4,1.95) -- node[lab,left]{messages,\\tool schemas} (-0.4,0.65);
+  \draw[<-] (0.4,1.95) -- node[lab,right]{text or\\tool call} (0.4,0.65);
+  \draw[->] (user.east |- 0,0.3) -- node[lab,above]{request (AR/EN)} (p1.west |- 0,0.3);
+  \draw[<-] (user.east |- 0,-0.3) -- node[lab,below]{reply + evidence} (p1.west |- 0,-0.3);
+  \draw[<->] (p1.east) -- node[lab,above]{session history} (d2.west);
+  % process 2
+  \draw[->] (-0.4,-0.65) -- node[lab,left]{tool call} (-0.4,-2.55);
+  \draw[<-] (0.4,-0.65) -- node[lab,right,pos=0.35]{result or\\``pending''} (0.4,-2.55);
+  \draw[->] (-4.7,-0.45) |- node[lab,above,pos=0.75]{Confirm / Cancel} (p2.west |- 0,-2.95);
+  \draw[->] (d1.north) |- node[lab,below,pos=0.75]{device lookup} (p2.west |- 0,-3.45);
+  \draw[->] (p2.east |- 0,-2.95) -- node[lab,above]{commands} (lab.west |- 0,-2.95);
+  \draw[<-] (p2.east |- 0,-3.45) -- node[lab,below]{device state} (lab.west |- 0,-3.45);
+  \draw[->] (1.2,-2.55) -- (1.2,-1.6) -| node[lab,right,pos=0.75]{audit entry} (d2.south);
+  % process 3
+  \draw[->] (-0.4,-3.85) -- node[lab,left]{scan request} (-0.4,-5.75);
+  \draw[<-] (0.4,-3.85) -- node[lab,right]{device list} (0.4,-5.75);
+  \draw[->] (p3.east |- 0,-6.15) -- node[lab,above]{ARP, ping, mDNS} (lan.west |- 0,-6.15);
+  \draw[<-] (p3.east |- 0,-6.65) -- node[lab,below]{replies} (lan.west |- 0,-6.65);
+  % process 4
+  \draw[->] (p3.south) -- node[lab,right]{real device list} (p4.north);
+  \draw[->] (lab.east) -- ++(0.6,0) |- node[lab,above,pos=0.75]{device state} (p4.east |- 0,-9.35);
+  \draw[->] (p4.west |- 0,-9.6) -- (-6.2,-9.6) -- node[lab,left,pos=0.5]{dashboard\\view} (-6.2,-0.45);
+  \draw[->] (-0.8,-10.25) |- node[lab,above,pos=0.75]{notification} (tg.east);
+  \draw[->] (0.8,-10.25) |- node[lab,above,pos=0.75]{alert events} (d3.west);
+\end{tikzpicture}
+\caption{Level 1 data flow diagram}
+\label{fig:dfd1}
 \end{figure}
 
 \section{System Requirements}
@@ -117,8 +292,8 @@ NFR3 & The system shall visually distinguish Simulated Mode from Real Network Mo
 NFR4 & Real Network Mode shall be strictly read-only: the real-network backend shall have no capability able to alter the state of any discovered device, enforced in code rather than by the prompt. \\ \hline
 NFR5 & Every destructive action available in Simulated Mode, such as powering off a device, blocking or allowing a port, or changing a camera's credentials, shall be confined to the Containerlab lab environment. \\ \hline
 NFR6 & The system shall require explicit user confirmation before executing a destructive action, with an additional acknowledgement for protected devices. \textbf{Implemented in Project 1} (Section~\ref{sec:guard}). \\ \hline
-NFR12 & (Planned, Project 2) The system shall authenticate users, with roles, before granting access to the web interface. Not yet implemented; stated here as a known, scoped limitation rather than left unaddressed. \\ \hline
-NFR13 & The server shall run as a normal user. The only privileges it needs (a raw socket for ARP scanning, and re-attaching a lab device to its bridge) shall be granted narrowly rather than by running the whole server as root. \\ \hline
+NFR7 & (Planned, Project 2) The system shall authenticate users, with roles, before granting access to the web interface. Not yet implemented; stated here as a known, scoped limitation rather than left unaddressed. \\ \hline
+NFR8 & The server shall run as a normal user. The only privileges it needs (a raw socket for ARP scanning, and re-attaching a lab device to its bridge) shall be granted narrowly rather than by running the whole server as root. \\ \hline
 \caption{Security requirements}\label{tab:nfr-security}\\
 \end{xltabular}}
 
@@ -129,9 +304,9 @@ NFR13 & The server shall run as a normal user. The only privileges it needs (a r
 \hline
 \head \textbf{ID} & \textbf{Non-functional Requirement} \\ \hline
 \endhead
-NFR7 & The agent loop shall cap tool-calling rounds at five per user request, so that no request can loop indefinitely. \\ \hline
-NFR8 & The system shall use an LLM inference provider optimised for low response latency, since multi-step tool-calling compounds per-call latency directly into the user's perceived response time. \\ \hline
-NFR9 & A real-network scan shall run its discovery methods in parallel, hold the mDNS browse window open for at least six seconds, and reuse a result for 20 seconds, so that repeated questions are answered instantly. \\ \hline
+NFR9 & The agent loop shall cap tool-calling rounds at five per user request, so that no request can loop indefinitely. \\ \hline
+NFR10 & The system shall use an LLM inference provider optimised for low response latency, since multi-step tool-calling compounds per-call latency directly into the user's perceived response time. \\ \hline
+NFR11 & A real-network scan shall run its discovery methods in parallel, hold the mDNS browse window open for at least six seconds, and reuse a result for 20 seconds, so that repeated questions are answered instantly. \\ \hline
 \caption{Performance requirements}\label{tab:nfr-performance}\\
 \end{xltabular}}
 
@@ -142,8 +317,8 @@ NFR9 & A real-network scan shall run its discovery methods in parallel, hold the
 \hline
 \head \textbf{ID} & \textbf{Non-functional Requirement} \\ \hline
 \endhead
-NFR10 & The backend shall run on any Linux Docker host with Containerlab installed, including Windows via WSL2 with a native docker-ce installation, and the lab shall be deployable with one command. \\ \hline
-NFR11 & The frontend shall require no installation beyond a standard web browser on the machine running NetMind. \\ \hline
+NFR12 & The backend shall run on any Linux Docker host with Containerlab installed, including Windows via WSL2 with a native docker-ce installation, and the lab shall be deployable with one command. \\ \hline
+NFR13 & The frontend shall require no installation beyond a standard web browser on the machine running NetMind. \\ \hline
 \caption{Portability requirements}\label{tab:nfr-portability}\\
 \end{xltabular}}
 
