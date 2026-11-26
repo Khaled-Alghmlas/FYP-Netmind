@@ -244,9 +244,9 @@ stages of a scan and Figure~\ref{fig:scanflow} shows the flow.
 \label{fig:scanflow}
 \end{figure}
 
-\textbf{Design Decisions and Alternatives Considered.} This part explains why
-each technique and library was chosen, and which alternatives were considered
-and not selected (summary in Table~\ref{tab:decisions}).
+\textbf{Design Decisions and Alternatives Considered.}
+Table~\ref{tab:decisions} summarises why each technique and library was
+chosen, and which alternatives were considered and not selected.
 
 {\small
 \begin{xltabular}{\textwidth}{|L{3.2cm}|Y|}
@@ -265,83 +265,8 @@ Privileges & A copy of the virtualenv's Python with only the raw-socket capabili
 \caption{Design decisions and alternatives considered (summary)}\label{tab:decisions}\\
 \end{xltabular}}
 
-\textbf{Subnet detection.} The active interface is found by opening a UDP
-socket towards a public address and reading the local address the operating
-system assigns to it. No packet is actually sent, and the method relies only
-on the Python standard library. If there is no default route at all, the
-module reads the interface configuration with \code{ip addr} instead.
-Alternatives were the netifaces and psutil libraries, which are more accurate
-on machines with several interfaces but add an external dependency, and
-gethostbyname applied to the machine's own hostname, which frequently returns
-the loopback address 127.0.0.1 and is therefore unreliable. The chosen method
-assumes a /24 subnet, which is a known limitation.
-
-\textbf{Host discovery with ARP, Scapy and a ping sweep.} ARP was chosen
-because it works at the data link layer: a device cannot ignore an ARP
-request and still take part in an Ethernet network, so ARP finds devices that
-are configured to block ICMP ping, and it also returns the MAC address. Scapy
-was chosen to send the requests because it is a pure Python library that
-integrates directly with the rest of the code and gives full control over
-packet construction without an external program. In practice, however, some
-devices answer ping but miss the short ARP window, so the ping sweep is not
-only a fallback: running both and merging the results finds more devices than
-either method alone, and \code{found\_by} makes visible which method saw each
-device. The alternatives were Nmap, used directly or through python-nmap,
-which is far more capable but is a separate binary larger than this module
-requires; the arp-scan command-line tool, which is fast but is again an
-external dependency; the operating system's ARP cache, which only lists
-devices that the machine has already communicated with; and passive sniffing
-of network traffic, which needs no probes but can take a long time to reveal
-quiet devices.
-
-\textbf{IPv6.} An IPv6 subnet is far too large to sweep, so the module sends
-one ping to the IPv6 all-nodes multicast address on the active interface. Every
-IPv6 device on the link answers, which places it in the kernel's neighbour
-table; the module then reads that table and attaches each IPv6 address to the
-device with the same MAC address. A device often has several IPv6 addresses
-(a link-local \code{fe80::} address and one or more global ones), and all are
-listed.
-
-\textbf{Concurrency.} Checking 254 addresses one after another would take
-several minutes, since each unanswered ping waits up to one second. A
-ThreadPoolExecutor with 64 workers runs the pings in parallel and reduces the
-sweep to a few seconds, and a second small pool runs the four discovery
-methods at the same time, so a full scan takes about as long as its slowest
-method. Threads suit this task because it is bound by waiting on the network
-rather than by computation. The alternatives were multiprocessing, whose
-separate processes add memory and start-up cost for work that is only
-waiting, and asyncio, which would be efficient but would require the
-surrounding code to be restructured around asynchronous functions.
-
-\textbf{Hostname discovery with mDNS.} Multicast DNS was chosen because small
-and home networks often have no reverse DNS records, so a reverse lookup
-alone returns no name for most devices. mDNS lets printers, AirPlay devices,
-Chromecast devices, and shared workstations announce their names without any
-credentials or access to the router, and the zeroconf library provides a pure
-Python implementation. The browse runs on every scan rather than once at
-server start, so that a device that joins the network later is still found.
-The alternatives were NetBIOS name queries, which are mostly limited to
-Windows hosts; SSDP and UPnP discovery, which cover fewer device types; DHCP
-lease tables read from the router, which need administrative access to the
-router; and SNMP queries, which need SNMP to be enabled and credentials to be
-known. A limitation of mDNS is that a device which advertises no service, such
-as an idle phone, appears without a hostname, although it is still listed by
-IP and MAC address.
-
-\textbf{Reverse DNS and status checking.} Reverse DNS through the standard
-library is used as a secondary source, because it is already available in
-Python at no cost and gives names on networks that do maintain DNS records.
-The status of a single device is determined with one ping, which keeps it
-consistent with the ping sweep and needs no extra dependency. A TCP
-connection check or an ARP probe would be more reliable against devices that
-block ICMP, and are identified as possible improvements.
-
-\textbf{Optional dependencies and output format.} Scapy and zeroconf are
-imported inside try and except blocks, and their availability is recorded in
-flags. If either library is missing the module degrades gracefully instead of
-failing to start, which makes it easier to run on different machines. Results
-are returned as plain dictionaries, rather than custom classes, because they
-map directly to JSON for the API.
+The reasoning behind each of these decisions, and the alternatives that were
+considered for each, is given in full in Appendix~\ref{app:scan}.
 
 \textbf{Limitations.} ARP scanning only works within the local broadcast
 domain and needs the raw-socket capability. The ping command options used are
@@ -536,23 +461,9 @@ dashboard uses read endpoints for devices, alerts, and logs, and a power
 endpoint for the on/off buttons (turning on runs directly; turning off returns
 a pending action that goes through the guard).
 
-The first version of the dashboard polled the Docker daemon device by device,
-which made one refresh take more than fifteen seconds with the full lab
-running. Four changes made refreshes fast enough for regular polling:
-
-\begin{enumerate}
-\item all container states are read from a single container listing;
-  per-container statistics, the slowest call and the only source of the CPU
-  figures, are no longer requested, and the dashboard shows status rather than
-  CPU usage;
-\item the computed result is cached for three seconds, and concurrent callers
-  share one computation instead of each starting their own;
-\item firewall audits and camera credential checks used for the alert list
-  are cached for ten seconds, and the cache is cleared whenever a rule,
-  password or power state changes;
-\item the frontend coalesces overlapping refreshes and releases a pressed
-  button when its action finishes, so a button can no longer remain stuck.
-\end{enumerate}
+The first version of the dashboard took more than fifteen seconds to refresh
+with the full lab running. Four changes, described in
+Appendix~\ref{app:dash}, made refreshes fast enough for regular polling.
 
 Three views sit on top of this state. The \emph{alert history} records a
 ``Device Offline'' alert when a device goes down and a ``Device Back Online''
