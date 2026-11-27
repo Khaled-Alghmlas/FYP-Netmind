@@ -12,6 +12,7 @@ EXPECTED_TOOLS = {
     "block_port", "allow_port", "get_camera_stream_status", "start_camera_stream",
     "stop_camera_stream", "check_camera_credentials", "change_camera_credentials",
     "traceroute", "get_routes", "get_interface_stats", "get_alerts",     # issue #23
+    "diagnose_connectivity", "diagnose_device", "get_recent_actions",   # issue #26
 }
 
 
@@ -35,7 +36,8 @@ def test_schema_comes_from_hints_and_docstring():
     assert fn["description"] == "Do something to a host. It can take a second line."
     assert fn["parameters"]["required"] == ["host"]             # the others have defaults
     props = fn["parameters"]["properties"]
-    assert [props[k]["type"] for k in ("host", "count", "strict", "ratio")] == ["string", "integer", "boolean", "number"]
+    assert [props[k]["type"] for k in ("host", "count", "strict", "ratio")] == [
+        "string", ["integer", "null"], ["boolean", "null"], ["number", "null"]]   # optional ones may be null
     assert props["count"]["description"] == "How many times (wrapped onto a second line)"
 
 

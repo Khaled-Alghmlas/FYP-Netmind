@@ -291,7 +291,7 @@ def _lab_probe_script(ping_ips, camera_ips):
     pings = " ".join(ping_ips)
     cams = " ".join(camera_ips)
     return ("cd /tmp && rm -f nmp_* nmw_*; "
-            f"for ip in {pings}; do (ping -c {LAB_PROBE_PINGS} -w {LAB_PROBE_PINGS} -q $ip > nmp_$ip 2>&1) & done; "
+            f"for ip in {pings}; do (ping -c {LAB_PROBE_PINGS} -W 1 -w {LAB_PROBE_PINGS} -q $ip > nmp_$ip 2>&1) & done; "
             f"for ip in {cams}; do (wget -q -T 2 -O /dev/null http://$ip:{CAMERA_PORT}/snapshot "
             "&& echo ok > nmw_$ip || echo fail > nmw_$ip) & done; "
             "wait; for f in nmp_* nmw_*; do [ -f \"$f\" ] && echo \"== $f\" && cat \"$f\"; done; rm -f nmp_* nmw_*")

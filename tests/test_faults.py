@@ -298,6 +298,7 @@ def test_sample_lab_adds_the_probe_from_the_router(monkeypatch):
     [script] = boxes["c-r1"].commands
     assert "10.2.0.10" not in script                 # powered-off devices are not probed
     assert "http://$ip:8080/snapshot" in script and "10.1.0.50" in script
+    assert "-W 1 -w 3" in script                      # an unreachable device costs at most ~3 s, not 10 s per ping
     assert samples["fw-branch1"]["lab_rtt"] == 301.0
     assert samples["cam-khalid"]["lab_stream"] is False and samples["cam-khalid"]["stream"] is True
     assert "lab_reachable" not in samples["r1"] and samples["host-sara"] == {"container": "exited"}

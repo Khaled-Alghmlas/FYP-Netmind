@@ -250,3 +250,31 @@ def test_plain_question_is_not_retried_more_than_once_and_real_mode_never():
     real_tools = [{"function": {"name": "list_devices"}}]
     client = FakeClient([make_msg("I can't block ports on real devices.")])
     assert not core.needs_tool_retry("block port 22", "I can't block ports on real devices.", real_tools, [])
+
+
+def test_null_for_an_optional_argument_means_the_default():
+    # the model sent {"device": null} for get_alerts and the request failed (#26 testing)
+    assert core._parse_args('{"active_only": true, "device": null, "limit": 20}') == (
+        {"active_only": True, "limit": 20}, None)
+
+
+def test_the_context_sent_to_the_model_stays_small():
+    big = "x" * 5000
+    history = [{"role": "system", "content": "S"}]
+    for n in range(6):   # six earlier turns, each with a large tool result
+        history += [{"role": "user", "content": f"q{n}"},
+                    {"role": "assistant", "content": "", "tool_calls": [
+                        {"id": f"c{n}", "type": "function", "function": {"name": "t", "arguments": "{}"}}]},
+                    {"role": "tool", "tool_call_id": f"c{n}", "content": big},
+                    {"role": "assistant", "content": f"a{n}"}]
+    history += [{"role": "user", "content": "now"},
+                {"role": "assistant", "content": "", "tool_calls": [
+                    {"id": "cn", "type": "function", "function": {"name": "t", "arguments": "{}"}}]},
+                {"role": "tool", "tool_call_id": "cn", "content": big}]
+    sent = core.context_window(history, max_chars=2000)
+    assert sent[0]["content"] == "S" and sent[1]["role"] != "tool"
+    assert [m.get("content") for m in sent[-3:-2]] == ["now"]                 # the current turn is whole...
+    assert len(sent[-1]["content"]) < core.MAX_TOOL_RESULT_CHARS + 40          # ...with its result shortened
+    assert all(len(m["content"]) < core.OLD_TOOL_RESULT_CHARS + 40 for m in sent[1:-3] if m["role"] == "tool")
+    assert len(history[2 + 1]["content"]) == 5000                              # the stored history is unchanged
+    assert sum(len(m.get("content") or "") for m in sent) < 2000 + core.MAX_TOOL_RESULT_CHARS + 200

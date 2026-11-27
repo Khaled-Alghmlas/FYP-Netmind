@@ -414,6 +414,24 @@ def revert(run_id):
         return dict(run)
 
 
+VERDICTS = ("correct", "partly", "wrong")
+
+
+def set_verdict(run_id, verdict):
+    """Records whether the assistant diagnosed this fault correctly (a person judges it on the
+    Scenarios page). None clears it."""
+    if verdict is not None and verdict not in VERDICTS:
+        raise FaultError(f"verdict must be one of {', '.join(VERDICTS)}")
+    with _lock:
+        _load()
+        run = next((r for r in _runs if r["id"] == run_id), None)
+        if run is None:
+            raise FaultError(f"no fault run '{run_id}'")
+        run["diagnosis"] = verdict
+        _save()
+        return dict(run)
+
+
 def revert_all():
     """Undoes every active fault, newest first; one failure does not stop the others."""
     results = []

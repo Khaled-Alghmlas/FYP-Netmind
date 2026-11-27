@@ -73,6 +73,8 @@ def build_schema(fn):
         properties[name] = {"type": json_type, "description": arg_docs[name]}
         if param.default is inspect.Parameter.empty:
             required.append(name)
+        else:   # models often send null for an optional argument: allow it (the default is then used)
+            properties[name]["type"] = [json_type, "null"]
     unknown = set(arg_docs) - set(properties)
     if unknown:
         raise ValueError(f"tool '{fn.__name__}': 'Args:' describes unknown parameter(s) {sorted(unknown)}")

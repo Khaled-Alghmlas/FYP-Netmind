@@ -22,6 +22,11 @@ from tool_catalog import registry
 MAX_ROUNDS = 5
 SESSION_TTL_SECONDS = 2 * 60 * 60      # drop sessions idle for 2 hours
 MAX_HISTORY_MESSAGES = 40              # system prompt + the most recent N messages
+# What is sent to the model each round must stay small: the free Groq tier allows about 8000
+# tokens per request, and the system prompt and tool schemas already take about half of that.
+MAX_CONTEXT_CHARS = 9000               # conversation sent to the model, not counting the system prompt
+MAX_TOOL_RESULT_CHARS = 3000           # one tool result in the current turn
+OLD_TOOL_RESULT_CHARS = 300            # one tool result from an earlier turn (already answered)
 MAX_SESSIONS = 200                     # hard cap so memory cannot grow without bound
 PENDING_TTL_SECONDS = 5 * 60           # a confirmation request expires after 5 minutes
 
@@ -68,6 +73,40 @@ def trim_history(history, max_messages=MAX_HISTORY_MESSAGES):
     while tail and tail[0].get("role") == "tool":
         tail = tail[1:]
     return system + tail
+
+
+def _clip(text, limit):
+    text = text or ""
+    return text if len(text) <= limit else text[:limit] + " …(cut to save space)"
+
+
+def _size(message):
+    calls = message.get("tool_calls") or []
+    return len(message.get("content") or "") + sum(len(c["function"].get("arguments") or "") for c in calls) + 20
+
+
+def context_window(history, max_chars=MAX_CONTEXT_CHARS):
+    """The messages to send to the model: the system prompt and as much of the newest conversation
+    as fits in max_chars. Tool results are shortened (hard for earlier turns, whose answers are
+    already written), the oldest messages are dropped first, and the current turn is always kept.
+    The kept part never starts with a tool result whose request was dropped. `history` itself is
+    not changed."""
+    system, rest = history[:1], history[1:]
+    last_user = max((i for i, m in enumerate(rest) if m.get("role") == "user"), default=0)
+    out = []
+    for i, m in enumerate(rest):
+        if m.get("role") == "tool":
+            m = {**m, "content": _clip(m.get("content"), OLD_TOOL_RESULT_CHARS if i < last_user
+                                       else MAX_TOOL_RESULT_CHARS)}
+        out.append(m)
+    total = sum(_size(m) for m in out)
+    start = 0
+    while start < last_user and total > max_chars:
+        total -= _size(out[start])
+        start += 1
+    while start < last_user and out[start].get("role") == "tool":
+        start += 1
+    return system + out[start:]
 
 
 class SessionStore:
@@ -468,7 +507,7 @@ def _parse_args(raw):
         return {}, f"Malformed JSON in tool arguments: {e}"
     if not isinstance(args, dict):
         return {}, "Tool arguments must be a JSON object."
-    return args, None
+    return {k: v for k, v in args.items() if v is not None}, None   # null = use the default
 
 
 def _brief(result, limit=160):
@@ -500,7 +539,7 @@ def run_query(provider, user_input, history, tools, call_tool, steps=None,
 
     for _ in range(max_rounds):
         try:
-            msg = provider.complete(history, tools)
+            msg = provider.complete(context_window(history), tools)
         except Exception as e:  # noqa: BLE001
             return f"Sorry, I hit an error talking to the model: {e}"
 

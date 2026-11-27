@@ -338,23 +338,86 @@ body[data-net-mode="real"] .sim-only { display: none; }
     background: none; color: var(--text); cursor: pointer; font-family: inherit; }
 .alert-ack:hover { border-color: var(--accent); color: var(--accent); }
 .alert-acked { margin-inline-start: 8px; font-size: 11px; color: var(--muted); }
-/* Scenarios page (issue #25) */
-.scenario-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-.scenario-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
-.scenario-card h6 { margin: 0; font-size: 14px; font-weight: 600; }
-.scenario-card p { margin: 0; font-size: 12px; color: var(--muted); flex: 1; }
-.scenario-card .scenario-expect { font-size: 11px; color: var(--muted); }
-.scenario-row { display: flex; gap: 8px; align-items: center; }
-.scenario-row select { flex: 1; min-width: 0; padding: 4px 8px; border: 1px solid var(--border); border-radius: 8px;
-    background: var(--bg, transparent); color: var(--text); font-family: inherit; font-size: 12.5px; }
-.btn-danger-netmind { border: 1px solid #c0392b; color: #c0392b; background: none; border-radius: 8px; padding: 5px 12px;
-    font-size: 12.5px; cursor: pointer; font-family: inherit; }
-.btn-danger-netmind:hover { background: #c0392b; color: #fff; }
-.btn-danger-netmind:disabled, .btn-light-netmind:disabled { opacity: .5; cursor: default; }
-.run-ok { color: var(--success-text); font-weight: 500; }
-.run-miss { color: #c0392b; font-weight: 500; }
-.run-wait { color: #d39e00; font-weight: 500; }
-.scenario-msg { font-size: 12.5px; margin: 8px 0 0; }
+/* Scenarios page (issue #25): a live band (what is broken now), the fault catalogue grouped by
+   where the fault happens, and the results. */
+.bench-live { border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; background: var(--input-bg); }
+.bench-live.is-calm { display: flex; align-items: center; gap: 12px; }
+.bench-live.is-hot { border-color: color-mix(in srgb, var(--danger-text) 45%, var(--border)); background: var(--danger-bg); }
+.bench-live-title { font-size: 14px; font-weight: 600; }
+.bench-live-sub { color: var(--muted); font-size: 12.5px; }
+.bench-live-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.live-row { display: grid; grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center;
+    gap: 14px; padding: 10px 0; border-top: 1px solid color-mix(in srgb, var(--danger-text) 20%, transparent); }
+.live-what b { display: block; font-size: 13.5px; font-weight: 600; }
+.live-what span, .live-meta span { color: var(--muted); font-size: 12px; }
+.live-meta { font-size: 13px; }
+.live-meta strong { display: block; font-weight: 500; font-variant-numeric: tabular-nums; }
+.bench-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--success-text); }
+.bench-dot.hot { background: var(--danger-text); box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger-text) 55%, transparent); animation: bench-pulse 1.8s ease-out infinite; }
+@keyframes bench-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger-text) 55%, transparent); }
+    100% { box-shadow: 0 0 0 9px transparent; } }
+@media (prefers-reduced-motion: reduce) { .bench-dot.hot { animation: none; } }
+
+.fault-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.fault-group { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 4px 16px 6px; }
+.fault-group-head { padding: 12px 0 10px; }
+.fault-group-head h6 { margin: 0; font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.fault-group-head h6 svg { color: var(--accent); flex: none; }
+.fault-group-head p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+.fault-row { padding: 12px 0; border-top: 1px solid var(--row-border); }
+.fault-row.is-active { margin: 0 -16px; padding: 12px 16px; background: var(--danger-bg);
+    box-shadow: inset 3px 0 0 var(--danger-text); }
+html[dir="rtl"] .fault-row.is-active { box-shadow: inset -3px 0 0 var(--danger-text); }
+.fault-title { font-size: 13.5px; font-weight: 600; }
+.fault-desc { color: var(--muted); font-size: 12.5px; margin-top: 2px; line-height: 1.45; }
+.fault-expect { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+.fault-expect b { font-weight: 500; color: var(--text); }
+.fault-controls { display: flex; gap: 8px; margin-top: 10px; }
+.fault-controls select { flex: 1; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--input-bg); color: var(--text); font-family: inherit; font-size: 12.5px; }
+.fault-controls select:focus-visible, .bench-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bench-btn { height: 32px; padding: 0 14px; border-radius: 8px; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;
+    border: 1px solid var(--border); background: var(--input-bg); color: var(--text); white-space: nowrap; transition: border-color .15s, color .15s, background .15s; }
+.bench-btn:hover:not(:disabled) { border-color: var(--danger-text); color: var(--danger-text); }
+.bench-btn.undo { border-color: var(--text); }
+.bench-btn.undo:hover:not(:disabled) { background: var(--text); color: var(--bg); border-color: var(--text); }
+.bench-btn.danger { border-color: var(--danger-text); color: var(--danger-text); background: transparent; }
+.bench-btn.danger:hover:not(:disabled) { background: var(--danger-text); color: #fff; }
+.bench-btn:disabled { opacity: .5; cursor: default; }
+
+.bench-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.bench-stat { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.bench-stat .stat-value { font-size: 22px; margin: 4px 0 0; font-variant-numeric: tabular-nums; }
+.bench-stat .stat-value small { font-size: 13px; color: var(--muted); font-weight: 400; }
+.run-pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.run-pill.ok { background: var(--success-bg); color: var(--success-text); }
+.run-pill.wait { background: var(--warning-bg); color: var(--warning-text); }
+.run-pill.miss { background: var(--danger-bg); color: var(--danger-text); }
+.run-pill.muted { background: var(--panel); color: var(--muted); }
+.run-pill.live { background: var(--danger-bg); color: var(--danger-text); }
+#runs-body td { vertical-align: middle; padding-top: 12px; padding-bottom: 12px; }
+#runs-body td.num { font-variant-numeric: tabular-nums; }
+.run-title { font-weight: 500; }
+.run-error { color: var(--danger-text); font-size: 11.5px; margin-top: 2px; }
+.scenario-msg { font-size: 12.5px; margin: 0 0 12px; }
+.scenario-msg:empty { display: none; }
+@media (max-width: 1100px) { .fault-groups { grid-template-columns: 1fr; } }
+@media (max-width: 760px) {
+    .live-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+    .live-row .live-meta { grid-column: 2 / 3; }
+    .bench-stats { grid-template-columns: 1fr; }
+}
+.playbook-line { padding: 1px 0; word-break: break-word; }
+.verdict-btns { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.verdict-btns button { border: 0; background: none; color: var(--muted); padding: 3px 10px; font-size: 12px; cursor: pointer;
+    font-family: inherit; }
+.verdict-btns button + button { border-inline-start: 1px solid var(--border); }
+.verdict-btns button:hover { color: var(--text); background: var(--panel); }
+.verdict-btns button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.verdict-btns button.on { color: #fff; border-color: transparent; }
+.verdict-btns button.on[data-verdict="correct"] { background: var(--success-text); }
+.verdict-btns button.on[data-verdict="partly"] { background: #d39e00; }
+.verdict-btns button.on[data-verdict="wrong"] { background: #c0392b; }
 .alert-when { color: var(--muted); font-size: 11px; margin-top: 3px; }
 #chat-clear { align-self: flex-end; margin: 10px 16px 0; background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 20px; padding: 4px 12px; font-size: 12px; font-family: inherit; cursor: pointer; }
 #chat-clear:hover { color: var(--text); background: var(--panel); }
@@ -632,31 +695,32 @@ body[data-net-mode="real"] .sim-only { display: none; }
              NetMind notices (issue #25). Simulated lab only.
              ============================================================ -->
         <section id="scenariosView" style="display:none">
+            <div id="bench-live" aria-live="polite"></div>
             <div class="card-custom p-4 mb-3">
                 <div class="section-header">
                     <div>
-                        <h5 data-i18n="scenariosTitle">Fault Scenarios</h5>
-                        <p data-i18n="scenariosSub">Each scenario breaks one thing in the lab and can be undone</p>
+                        <h5 data-i18n="catalogueTitle">Fault catalogue</h5>
+                        <p data-i18n="catalogueSub">Break one thing on purpose, check that NetMind notices, then undo it.</p>
                     </div>
-                    <button class="btn-danger-netmind" id="revert-all-btn" data-i18n="revertAll">Undo all faults</button>
                 </div>
                 <div class="scenario-msg" id="scenario-msg"></div>
-                <div class="scenario-grid" id="scenario-grid"></div>
+                <div class="fault-groups" id="scenario-grid"></div>
             </div>
             <div class="card-custom p-4">
                 <div class="section-header">
                     <div>
-                        <h5 data-i18n="runsTitle">Runs</h5>
-                        <p data-i18n="runsSub">Was each fault detected, and how fast</p>
+                        <h5 data-i18n="runsTitle">Results</h5>
+                        <p data-i18n="runsSub">Every test: was the fault detected, how fast, and did the assistant find the cause?</p>
                     </div>
-                    <span class="accent fw-semibold" id="runs-summary"></span>
                 </div>
+                <div class="bench-stats" id="runs-summary"></div>
                 <div class="table-responsive">
                     <table class="table mb-0">
                         <thead><tr>
-                            <th data-i18n="runScenario">Scenario</th><th data-i18n="runTarget">Target</th>
+                            <th data-i18n="runScenario">Fault</th><th data-i18n="runTarget">Device</th>
                             <th data-i18n="runStarted">Started</th><th data-i18n="runState">State</th>
-                            <th data-i18n="runDetection">Detection</th><th data-i18n="runOther">Other alerts</th><th></th>
+                            <th data-i18n="runDetection">Detection</th><th data-i18n="runOther">Other alerts</th>
+                            <th data-i18n="runDiagnosis">Assistant's diagnosis</th><th></th>
                         </tr></thead>
                         <tbody id="runs-body"></tbody>
                     </table>
@@ -785,6 +849,12 @@ body[data-net-mode="real"] .sim-only { display: none; }
         revertFault: function (id) {
             return fetch(Api.base + "/api/faults/" + encodeURIComponent(id) + "/revert", { method: "POST" })
                 .then(function (res) { return res.json(); });
+        },
+
+        faultVerdict: function (id, verdict) {
+            return fetch(Api.base + "/api/faults/" + encodeURIComponent(id) + "/verdict", {
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ verdict: verdict })
+            }).then(function (res) { return res.json(); });
         },
 
         revertAllFaults: function () {
@@ -942,14 +1012,26 @@ body[data-net-mode="real"] .sim-only { display: none; }
             outCancelled: "Cancelled", outDenied: "Denied", outExpired: "Expired", outError: "Failed",
             reportsPageTitle: "Reports", reportsPageSub: "Security and reliability summary",
             navScenarios: "Scenarios", scenariosPageTitle: "Scenarios", scenariosPageSub: "Fault injection and detection",
-            scenariosTitle: "Fault Scenarios", scenariosSub: "Each scenario breaks one thing in the lab and can be undone",
-            revertAll: "Undo all faults", injectBtn: "Break it", revertBtn: "Undo", runsTitle: "Runs",
-            runsSub: "Was each fault detected, and how fast", runScenario: "Scenario", runTarget: "Target",
-            runStarted: "Started", runState: "State", runDetection: "Detection", runOther: "Other alerts",
-            runActive: "Active", runReverted: "Undone", runWaiting: "Waiting…", runMissed: "Not detected",
-            runDetectedIn: "Detected in", noRuns: "No scenario has been run yet.", expectedLabel: "Expected:",
+            catalogueTitle: "Fault catalogue", catalogueSub: "Break one thing on purpose, check that NetMind notices, then undo it.",
+            revertAll: "Undo all faults", injectBtn: "Break it", revertBtn: "Undo", runsTitle: "Results",
+            runsSub: "Every test: was the fault detected, how fast, and did the assistant find the cause?",
+            runScenario: "Fault", runTarget: "Device", runStarted: "Started", runState: "State", runDetection: "Detection",
+            runOther: "Other alerts", runActive: "Active", runReverted: "Undone", runWaiting: "Waiting…", runMissed: "Missed",
+            runDetectedIn: "Detected in", noRuns: "No test yet. Break something above and the result appears here.",
+            expectedLabel: "Should trigger:", liveCalmTitle: "The lab is healthy",
+            liveCalmSub: "No fault is active. Pick one below to start a test.", liveOne: "1 fault is active",
+            liveMany: "faults are active", brokenFor: "Broken for", detection: "Detection",
+            grpDevices: "Devices", grpDevicesSub: "The device itself stops or struggles.",
+            grpLinks: "Links and routing", grpLinksSub: "Traffic between devices is cut, slowed or sent the wrong way.",
+            grpSecurity: "Firewall and security", grpSecuritySub: "A rule or a setting changes what is allowed.",
+            statDetected: "Detected", statAvg: "Average time to detect", statDiagnosed: "Diagnosed correctly", ofWord: "of",
+            expDown: "an offline alert", expStream: "a degraded alert (stream stopped)", expUnreach: "a degraded alert (unreachable)",
+            expBranch: "degraded alerts for the whole branch", expLatency: "degraded alerts (high latency)",
+            expLoss: "degraded alerts (packet loss)", expBlocked: "a degraded alert (stream blocked)",
+            expSecurity: "a security finding", expCpu: "a degraded alert (CPU), after about 40 s",
             confirmInject: "Break the lab on purpose?", scenariosRealNote: "Scenarios only run on the simulated lab.",
-            detectedOf: "detected", secondsShort: "s",
+            detectedOf: "detected", secondsShort: "s", runDiagnosis: "Assistant's diagnosis", diagnosedOf: "diagnosed correctly",
+            verdict_correct: "The assistant found the right cause", verdict_partly: "Partly right", verdict_wrong: "Wrong cause",
             reportTitle: "Security & Reliability Report", reportPrint: "Print / Save as PDF",
             reportGenerated: "Generated", reportRealNote: "Reports are available in the simulated lab only.",
             repDevices: "Devices online", repOutages: "Outages", repAvgRecovery: "Avg. recovery", repLongest: "Longest outage",
@@ -1038,14 +1120,26 @@ body[data-net-mode="real"] .sim-only { display: none; }
             outCancelled: "أُلغي", outDenied: "مرفوض", outExpired: "انتهت صلاحيته", outError: "فشل",
             reportsPageTitle: "التقارير", reportsPageSub: "ملخص الأمان والاعتمادية",
             navScenarios: "السيناريوهات", scenariosPageTitle: "السيناريوهات", scenariosPageSub: "افتعال الأعطال وقياس اكتشافها",
-            scenariosTitle: "سيناريوهات الأعطال", scenariosSub: "كل سيناريو يعطّل شيئاً واحداً في اللاب ويمكن التراجع عنه",
-            revertAll: "تراجع عن كل الأعطال", injectBtn: "افتعل العطل", revertBtn: "تراجع", runsTitle: "التجارب",
-            runsSub: "هل اكتُشف كل عطل، وبأي سرعة", runScenario: "السيناريو", runTarget: "الهدف",
-            runStarted: "البداية", runState: "الحالة", runDetection: "الاكتشاف", runOther: "تنبيهات أخرى",
-            runActive: "نشط", runReverted: "تم التراجع", runWaiting: "بانتظار…", runMissed: "لم يُكتشف",
-            runDetectedIn: "اكتُشف خلال", noRuns: "لم يُشغَّل أي سيناريو بعد.", expectedLabel: "المتوقع:",
+            catalogueTitle: "قائمة الأعطال", catalogueSub: "عطّل شيئاً واحداً عمداً، تأكد أن NetMind لاحظه، ثم تراجع عنه.",
+            revertAll: "تراجع عن كل الأعطال", injectBtn: "افتعل العطل", revertBtn: "تراجع", runsTitle: "النتائج",
+            runsSub: "كل تجربة: هل اكتُشف العطل، وبأي سرعة، وهل عرف المساعد السبب؟",
+            runScenario: "العطل", runTarget: "الجهاز", runStarted: "البداية", runState: "الحالة", runDetection: "الاكتشاف",
+            runOther: "تنبيهات أخرى", runActive: "نشط", runReverted: "تم التراجع", runWaiting: "بانتظار…", runMissed: "لم يُكتشف",
+            runDetectedIn: "اكتُشف خلال", noRuns: "لا توجد تجارب بعد. افتعل عطلاً من الأعلى وستظهر النتيجة هنا.",
+            expectedLabel: "يُفترض أن يظهر:", liveCalmTitle: "اللاب سليم",
+            liveCalmSub: "لا يوجد عطل نشط. اختر عطلاً من الأسفل لبدء تجربة.", liveOne: "عطل واحد نشط",
+            liveMany: "أعطال نشطة", brokenFor: "معطّل منذ", detection: "الاكتشاف",
+            grpDevices: "الأجهزة", grpDevicesSub: "الجهاز نفسه يتوقف أو يتعثر.",
+            grpLinks: "الروابط والمسارات", grpLinksSub: "الحركة بين الأجهزة تنقطع أو تبطؤ أو تذهب لمكان خاطئ.",
+            grpSecurity: "الجدار الناري والأمان", grpSecuritySub: "قاعدة أو إعداد يغيّر ما هو مسموح.",
+            statDetected: "اكتُشف", statAvg: "متوسط زمن الاكتشاف", statDiagnosed: "شُخّص صحيحاً", ofWord: "من",
+            expDown: "تنبيه انقطاع", expStream: "تنبيه تدهور (توقف البث)", expUnreach: "تنبيه تدهور (لا يمكن الوصول)",
+            expBranch: "تنبيهات تدهور لكل الفرع", expLatency: "تنبيهات تدهور (بطء)",
+            expLoss: "تنبيهات تدهور (فقد حزم)", expBlocked: "تنبيه تدهور (البث محجوب)",
+            expSecurity: "ملاحظة أمنية", expCpu: "تنبيه تدهور (المعالج) بعد نحو 40 ثانية",
             confirmInject: "تعطيل اللاب عمداً؟", scenariosRealNote: "السيناريوهات تعمل على اللاب المحاكى فقط.",
-            detectedOf: "اكتُشف", secondsShort: "ث",
+            detectedOf: "اكتُشف", secondsShort: "ث", runDiagnosis: "تشخيص المساعد", diagnosedOf: "شُخّص صحيحاً",
+            verdict_correct: "المساعد وجد السبب الصحيح", verdict_partly: "صحيح جزئياً", verdict_wrong: "سبب خاطئ",
             reportTitle: "تقرير الأمان والاعتمادية", reportPrint: "طباعة / حفظ PDF",
             reportGenerated: "أُنشئ في", reportRealNote: "التقارير متاحة في شبكة المحاكاة فقط.",
             repDevices: "الأجهزة المتصلة", repOutages: "الانقطاعات", repAvgRecovery: "متوسط الاستعادة", repLongest: "أطول انقطاع",
@@ -1252,10 +1346,19 @@ body[data-net-mode="real"] .sim-only { display: none; }
         var html = '<details class="evidence-chain"><summary>' + escapeHtml(title) + "</summary>";
         steps.forEach(function (s, i) {
             var argsStr = JSON.stringify(s.args || {});
-            var resultStr = JSON.stringify(s.result);
+            var r = s.result, body;
+            if (r && typeof r === "object" && Array.isArray(r.steps)) {
+                // a diagnosis playbook (issue #26): one line per check, failed ones marked
+                body = r.steps.map(function (c) {
+                    var mark = c.ok === true ? '<span class="run-ok">✓</span>' : (c.ok === false ? '<span class="run-miss">✗</span>' : "•");
+                    return '<div class="playbook-line">' + mark + " <b>" + escapeHtml(c.check) + "</b> — " + escapeHtml(c.detail) + "</div>";
+                }).join("");
+            } else {
+                body = "<code>" + escapeHtml(JSON.stringify(r)) + "</code>";
+            }
             html += '<div class="evidence-step">' +
                 '<div class="evidence-step-head">' + (i + 1) + ". <code>" + escapeHtml(s.tool) + "(" + escapeHtml(argsStr) + ")</code></div>" +
-                '<div class="evidence-step-result"><code>' + escapeHtml(resultStr) + "</code></div>" +
+                '<div class="evidence-step-result">' + body + "</div>" +
                 "</div>";
         });
         html += "</details>";
@@ -2051,7 +2154,23 @@ body[data-net-mode="real"] .sim-only { display: none; }
     // ============================================================
     var Scenarios = {
         data: null,
-        targets: {},     // remembered target choice per scenario
+        targets: {},     // remembered device choice per scenario
+        // Where each fault happens: the catalogue is grouped by this, not by the order in the code.
+        GROUPS: [
+            { key: "Devices", icon: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+              ids: ["host-down", "camera-down", "camera-stream-stop", "host-cpu-stress"] },
+            { key: "Links", icon: '<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>',
+              ids: ["host-link-down", "branch-link-down", "branch-latency", "branch-packet-loss", "host-wrong-gateway", "route-removed"] },
+            { key: "Security", icon: '<path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/>',
+              ids: ["firewall-block-branch", "firewall-block-camera", "firewall-open-telnet", "camera-default-password"] }
+        ],
+        EXPECT: {
+            "host-down": "expDown", "camera-down": "expDown", "camera-stream-stop": "expStream", "host-cpu-stress": "expCpu",
+            "host-link-down": "expUnreach", "branch-link-down": "expBranch", "branch-latency": "expLatency",
+            "branch-packet-loss": "expLoss", "host-wrong-gateway": "expUnreach", "route-removed": "expBranch",
+            "firewall-block-branch": "expBranch", "firewall-block-camera": "expBlocked",
+            "firewall-open-telnet": "expSecurity", "camera-default-password": "expSecurity"
+        },
         load: function () {
             if (netMode !== "simulated") { Scenarios.data = null; Scenarios.render(); return; }
             Api.faults().then(function (d) { Scenarios.data = d; Scenarios.render(); })
@@ -2062,57 +2181,127 @@ body[data-net-mode="real"] .sim-only { display: none; }
             el.textContent = text || "";
             el.className = "scenario-msg" + (isError ? " run-miss" : "");
         },
+        title: function (s) { return s ? (lang === "ar" ? s.title_ar : s.title) : ""; },
+        detectionPill: function (r) {
+            var t = STRINGS[lang];
+            if (r.detected) return '<span class="run-pill ok">✓ ' + r.detection_seconds + " " + t.secondsShort + "</span>";
+            if (r.status === "active") return '<span class="run-pill wait">' + t.runWaiting + "</span>";
+            return '<span class="run-pill miss">' + t.runMissed + "</span>";
+        },
+        renderLive: function (byId, runs) {
+            var t = STRINGS[lang], box = document.getElementById("bench-live");
+            var active = runs.filter(function (r) { return r.status === "active"; });
+            if (!active.length) {
+                box.className = "bench-live is-calm";
+                box.innerHTML = '<span class="bench-dot"></span><div><div class="bench-live-title">' + t.liveCalmTitle +
+                    '</div><div class="bench-live-sub">' + t.liveCalmSub + "</div></div>";
+                return;
+            }
+            box.className = "bench-live is-hot";
+            box.innerHTML = '<div class="bench-live-head"><div class="bench-live-title">' +
+                (active.length === 1 ? t.liveOne : active.length + " " + t.liveMany) + "</div>" +
+                (active.length > 1 ? '<button class="bench-btn danger" data-revert-all="1">' + t.revertAll + "</button>" : "") + "</div>" +
+                active.map(function (r) {
+                    return '<div class="live-row"><span class="bench-dot hot"></span>' +
+                        '<div class="live-what"><b>' + escapeHtml(Scenarios.title(byId[r.scenario]) || r.title) + "</b><span>" + escapeHtml(r.target) + "</span>" +
+                        (r.error ? '<div class="run-error">' + escapeHtml(r.error) + "</div>" : "") + "</div>" +
+                        '<div class="live-meta"><span>' + t.brokenFor + '</span><strong class="elapsed" data-since="' + r.injected_at + '">' +
+                        fmtDuration((Date.now() - r.injected_at) / 1000) + "</strong></div>" +
+                        '<div class="live-meta"><span>' + t.detection + "</span><strong>" + Scenarios.detectionPill(r) + "</strong></div>" +
+                        '<button class="bench-btn undo" data-revert-run="' + escapeHtml(r.id) + '">' + t.revertBtn + "</button></div>";
+                }).join("");
+        },
         render: function () {
             var grid = document.getElementById("scenario-grid"), body = document.getElementById("runs-body");
             if (!grid) return;
             var t = STRINGS[lang], d = Scenarios.data;
-            document.getElementById("revert-all-btn").disabled = netMode !== "simulated";
             if (netMode !== "simulated" || !d) {
+                document.getElementById("bench-live").innerHTML = "";
+                document.getElementById("bench-live").className = "";
                 grid.innerHTML = '<div class="empty-note">' + (netMode !== "simulated" ? t.scenariosRealNote : "…") + "</div>";
                 body.innerHTML = "";
-                document.getElementById("runs-summary").textContent = "";
+                document.getElementById("runs-summary").innerHTML = "";
                 return;
             }
             if (d.error) Scenarios.say(d.error, true);
-            var active = {};
-            (d.runs || []).forEach(function (r) { if (r.status === "active") active[r.scenario + "|" + r.target] = r.id; });
-            grid.innerHTML = (d.scenarios || []).map(function (s) {
-                var chosen = Scenarios.targets[s.id] || s.targets[0] || "";
-                var options = s.targets.map(function (id) {
-                    return '<option value="' + escapeHtml(id) + '"' + (id === chosen ? " selected" : "") + ">" + escapeHtml(id) + "</option>";
-                }).join("");
-                var busy = active[s.id + "|" + chosen];
-                return '<div class="scenario-card"><h6>' + escapeHtml(lang === "ar" ? s.title_ar : s.title) + "</h6>" +
-                    "<p>" + escapeHtml(lang === "ar" ? s.description_ar : s.description) + "</p>" +
-                    '<div class="scenario-expect">' + t.expectedLabel + " " + escapeHtml(s.expected) + "</div>" +
-                    '<div class="scenario-row"><select data-scenario-target="' + escapeHtml(s.id) + '">' + options + "</select>" +
-                    (busy ? '<button class="btn-light-netmind" data-revert-run="' + escapeHtml(busy) + '">' + t.revertBtn + "</button>"
-                          : '<button class="btn-danger-netmind" data-inject="' + escapeHtml(s.id) + '"' + (s.targets.length ? "" : " disabled") + ">" + t.injectBtn + "</button>") +
-                    "</div></div>";
+            var byId = {}, runs = d.runs || [], activeRun = {};
+            (d.scenarios || []).forEach(function (s) { byId[s.id] = s; });
+            runs.forEach(function (r) { if (r.status === "active") activeRun[r.scenario + "|" + r.target] = r.id; });
+            Scenarios.renderLive(byId, runs);
+
+            // the catalogue, by where the fault happens
+            var placed = {};
+            var groups = Scenarios.GROUPS.map(function (g) {
+                var items = g.ids.filter(function (id) { return byId[id]; });
+                items.forEach(function (id) { placed[id] = true; });
+                return { g: g, items: items };
+            });
+            var rest = (d.scenarios || []).filter(function (s) { return !placed[s.id]; }).map(function (s) { return s.id; });
+            if (rest.length) groups[groups.length - 1].items = groups[groups.length - 1].items.concat(rest);
+            grid.innerHTML = groups.map(function (entry) {
+                var g = entry.g;
+                return '<div class="fault-group"><div class="fault-group-head"><h6><svg width="16" height="16" viewBox="0 0 24 24" fill="none" ' +
+                    'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + g.icon + "</svg>" +
+                    t["grp" + g.key] + "</h6><p>" + t["grp" + g.key + "Sub"] + "</p></div>" +
+                    entry.items.map(function (id) {
+                        var s = byId[id];
+                        var chosen = Scenarios.targets[id] || s.targets[0] || "";
+                        var options = s.targets.map(function (dev) {
+                            return '<option value="' + escapeHtml(dev) + '"' + (dev === chosen ? " selected" : "") + ">" + escapeHtml(dev) + "</option>";
+                        }).join("");
+                        var busy = activeRun[id + "|" + chosen];
+                        var expect = t[Scenarios.EXPECT[id]] || s.expected;
+                        return '<div class="fault-row' + (busy ? " is-active" : "") + '">' +
+                            '<div class="fault-title">' + escapeHtml(Scenarios.title(s)) + "</div>" +
+                            '<div class="fault-desc">' + escapeHtml(lang === "ar" ? s.description_ar : s.description) + "</div>" +
+                            '<div class="fault-expect">' + t.expectedLabel + " <b>" + escapeHtml(expect) + "</b></div>" +
+                            '<div class="fault-controls"><select aria-label="' + escapeHtml(Scenarios.title(s)) + '" data-scenario-target="' + escapeHtml(id) + '"' +
+                            (s.targets.length ? "" : " disabled") + ">" + options + "</select>" +
+                            (busy ? '<button class="bench-btn undo" data-revert-run="' + escapeHtml(busy) + '">' + t.revertBtn + "</button>"
+                                  : '<button class="bench-btn" data-inject="' + escapeHtml(id) + '"' + (s.targets.length ? "" : " disabled") + ">" + t.injectBtn + "</button>") +
+                            "</div></div>";
+                    }).join("") + "</div>";
             }).join("");
 
-            var titles = {};
-            (d.scenarios || []).forEach(function (s) { titles[s.id] = lang === "ar" ? s.title_ar : s.title; });
-            var runs = d.runs || [];
-            if (!runs.length) {
-                body.innerHTML = '<tr><td colspan="7" class="empty-note">' + t.noRuns + "</td></tr>";
-            } else {
-                body.innerHTML = runs.map(function (r) {
-                    var detection = r.detected ? '<span class="run-ok">✓ ' + t.runDetectedIn + " " + r.detection_seconds + " " + t.secondsShort + "</span>"
-                        : (r.status === "active" ? '<span class="run-wait">' + t.runWaiting + "</span>" : '<span class="run-miss">✗ ' + t.runMissed + "</span>");
-                    var state = r.status === "active" ? t.runActive : t.runReverted;
-                    var action = r.status === "active" ? '<button class="btn-light-netmind" data-revert-run="' + escapeHtml(r.id) + '">' + t.revertBtn + "</button>" : "";
-                    return "<tr><td>" + escapeHtml(titles[r.scenario] || r.title || r.scenario) + (r.error ? '<div class="run-miss" style="font-size:11px">' + escapeHtml(r.error) + "</div>" : "") +
-                        "</td><td>" + escapeHtml(r.target) + "</td><td>" + new Date(r.injected_at).toLocaleTimeString(lang === "ar" ? "ar-SA" : "en-US") +
-                        "</td><td>" + state + "</td><td>" + detection + "</td><td>" + ((r.other_alerts || []).length) + "</td><td>" + action + "</td></tr>";
-                }).join("");
-            }
+            // results
             var done = runs.filter(function (r) { return r.status !== "active"; });
             var hit = done.filter(function (r) { return r.detected; });
-            document.getElementById("runs-summary").textContent = done.length ? hit.length + " / " + done.length + " " + t.detectedOf : "";
+            var judged = runs.filter(function (r) { return r.diagnosis; });
+            var right = judged.filter(function (r) { return r.diagnosis === "correct"; });
+            var avg = hit.length ? hit.reduce(function (a, r) { return a + r.detection_seconds; }, 0) / hit.length : null;
+            function stat(label, value, of) {
+                return '<div class="bench-stat"><div class="stat-label">' + label + '</div><div class="stat-value">' + value +
+                    (of != null ? " <small>" + t.ofWord + " " + of + "</small>" : "") + "</div></div>";
+            }
+            document.getElementById("runs-summary").innerHTML = runs.length ?
+                stat(t.statDetected, done.length ? hit.length : "–", done.length || null) +
+                stat(t.statAvg, avg == null ? "–" : avg.toFixed(1) + " <small>" + t.secondsShort + "</small>") +
+                stat(t.statDiagnosed, judged.length ? right.length : "–", judged.length || null) : "";
+
+            function verdictButtons(r) {
+                return '<span class="verdict-btns" role="group">' + [["correct", "✓"], ["partly", "~"], ["wrong", "✗"]].map(function (v) {
+                    return '<button data-verdict="' + v[0] + '" data-verdict-run="' + escapeHtml(r.id) + '" title="' + t["verdict_" + v[0]] + '"' +
+                        ' aria-pressed="' + (r.diagnosis === v[0]) + '"' + (r.diagnosis === v[0] ? ' class="on"' : "") + ">" + v[1] + "</button>";
+                }).join("") + "</span>";
+            }
+            body.innerHTML = runs.length ? runs.map(function (r) {
+                var state = r.status === "active" ? '<span class="run-pill live">' + t.runActive + "</span>" : '<span class="run-pill muted">' + t.runReverted + "</span>";
+                var action = r.status === "active" ? '<button class="bench-btn undo" data-revert-run="' + escapeHtml(r.id) + '">' + t.revertBtn + "</button>" : "";
+                return '<tr><td><div class="run-title">' + escapeHtml(Scenarios.title(byId[r.scenario]) || r.title || r.scenario) + "</div>" +
+                    (r.error ? '<div class="run-error">' + escapeHtml(r.error) + "</div>" : "") +
+                    "</td><td>" + escapeHtml(r.target) + '</td><td class="num">' + new Date(r.injected_at).toLocaleTimeString(lang === "ar" ? "ar-SA" : "en-US") +
+                    "</td><td>" + state + "</td><td>" + Scenarios.detectionPill(r) + '</td><td class="num">' + ((r.other_alerts || []).length) +
+                    "</td><td>" + verdictButtons(r) + "</td><td>" + action + "</td></tr>";
+            }).join("") : '<tr><td colspan="8" class="empty-note">' + t.noRuns + "</td></tr>";
+        },
+        tick: function () {
+            document.querySelectorAll("#bench-live .elapsed[data-since]").forEach(function (el) {
+                el.textContent = fmtDuration((Date.now() - Number(el.getAttribute("data-since"))) / 1000);
+            });
         },
         init: function () {
             var grid = document.getElementById("scenario-grid");
+            setInterval(Scenarios.tick, 1000);
             grid.addEventListener("change", function (e) {
                 var sel = e.target.closest("[data-scenario-target]");
                 if (!sel) return;
@@ -2120,15 +2309,33 @@ body[data-net-mode="real"] .sim-only { display: none; }
                 Scenarios.render();
             });
             document.getElementById("scenariosView").addEventListener("click", function (e) {
-                var inj = e.target.closest("[data-inject]"), rev = e.target.closest("[data-revert-run]");
                 var t = STRINGS[lang];
+                var verdict = e.target.closest("[data-verdict-run]");
+                if (verdict) {
+                    var runId = verdict.getAttribute("data-verdict-run"), v = verdict.getAttribute("data-verdict");
+                    var current = (Scenarios.data.runs || []).filter(function (r) { return r.id === runId; })[0];
+                    Api.faultVerdict(runId, current && current.diagnosis === v ? null : v).then(function () { Scenarios.load(); });
+                    return;
+                }
+                var all = e.target.closest("[data-revert-all]");
+                if (all) {
+                    all.disabled = true;
+                    Api.revertAllFaults().then(function (r) {
+                        var failed = (r.failed || []).map(function (f) { return f.id + ": " + f.error; }).join("; ");
+                        Scenarios.say(failed, !!failed);
+                        Scenarios.load();
+                    }).catch(function () { all.disabled = false; });
+                    return;
+                }
+                var inj = e.target.closest("[data-inject]"), rev = e.target.closest("[data-revert-run]");
                 if (inj) {
                     var id = inj.getAttribute("data-inject");
                     var sel = grid.querySelector('[data-scenario-target="' + id + '"]');
                     var target = sel ? sel.value : "";
-                    if (!window.confirm(t.confirmInject + "\n" + id + " → " + target)) return;
+                    var s = (Scenarios.data.scenarios || []).filter(function (x) { return x.id === id; })[0];
+                    if (!window.confirm(t.confirmInject + "\n" + Scenarios.title(s) + " → " + target)) return;
                     inj.disabled = true;
-                    Scenarios.say("…");
+                    Scenarios.say("");
                     Api.injectFault(id, target).then(function (r) {
                         Scenarios.say(r.error || "", !!r.error);
                         Scenarios.load();
@@ -2140,16 +2347,6 @@ body[data-net-mode="real"] .sim-only { display: none; }
                         Scenarios.load();
                     }).catch(function () { rev.disabled = false; });
                 }
-            });
-            document.getElementById("revert-all-btn").addEventListener("click", function (e) {
-                var btn = e.currentTarget;
-                btn.disabled = true;
-                Api.revertAllFaults().then(function (r) {
-                    var failed = (r.failed || []).map(function (f) { return f.id + ": " + f.error; }).join(" · ");
-                    Scenarios.say(failed, !!failed);
-                    btn.disabled = false;
-                    Scenarios.load();
-                }).catch(function () { btn.disabled = false; });
             });
         }
     };

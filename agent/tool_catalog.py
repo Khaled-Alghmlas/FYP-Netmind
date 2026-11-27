@@ -97,6 +97,42 @@ def get_interface_stats(device: str, interface: str = ""):
     return lab_network.get_interface_stats(device, interface)
 
 
+# --- root-cause analysis (issue #26) ------------------------------------------------------
+@tool(Cap.DIAGNOSTICS)
+def diagnose_connectivity(src: str, dst: str):
+    """Find out WHY one device cannot reach another (or reaches it slowly or with loss). Read-only. Runs a fixed playbook in code: power of both ends, ping, traceroute, then every device on the path in order (cable and link state, address and gateway compared with the lab design, the router's routes, firewall rules that drop the traffic, delay or loss configured on a link) and, for a camera, whether its video port is reachable. Returns every step with ok true/false and the failed ones under 'problems'. Use it first for any "why can't X reach Y" question.
+
+    Args:
+        src: Source device id or owner, e.g. 'host-ahmed'
+        dst: Destination device id or owner, e.g. 'cam-fahad'
+    """
+    import diagnosis
+    return diagnosis.diagnose_connectivity(src, dst)
+
+
+@tool(Cap.DIAGNOSTICS)
+def diagnose_device(device: str):
+    """Find out WHAT is wrong with one device. Read-only. Runs a fixed playbook in code: the background monitor's view, power (and how it stopped), cable and link state, address and gateway compared with the lab design, its branch firewall and the router's route towards it, delay or loss on links, whether the router can reach it, for a camera whether the video service runs and is reachable, CPU use, and recent changes and alerts. Returns every step with ok true/false and the failed ones under 'problems'. Use it first for "what happened to X" or "why is X down/slow/degraded".
+
+    Args:
+        device: Device id or owner, e.g. 'cam-khalid'
+    """
+    import diagnosis
+    return diagnosis.diagnose_device(device)
+
+
+@tool(Cap.ALERTS)
+def get_recent_actions(device: str = "", minutes: int = 60):
+    """List the changes made through NetMind recently (power on/off, firewall ports, camera stream and password changes), newest first, with who made them and when. Read-only. Use it to check whether someone changed a device just before a problem started.
+
+    Args:
+        device: Device id or part of it. Leave empty for all devices
+        minutes: How far back to look, 1-1440 (default 60)
+    """
+    import diagnosis
+    return diagnosis.recent_actions(device, minutes)
+
+
 # --- history -----------------------------------------------------------------------------
 @tool(Cap.ALERTS)
 def get_alerts(device: str = "", kind: str = "", active_only: bool = False, hours_back: int = 24,
@@ -105,7 +141,7 @@ def get_alerts(device: str = "", kind: str = "", active_only: bool = False, hour
 
     Args:
         device: Device id or part of it, e.g. 'cam-khalid'. Leave empty for all devices
-        kind: Optional alert kind: device_offline, device_online, firewall_finding or camera_finding
+        kind: Optional alert kind: device_offline, device_online, device_degraded, device_recovered, firewall_finding or camera_finding
         active_only: True to list only alerts that are still open
         hours_back: How many hours back to look, 1-720 (default 24). Ignored when start or end is given
         start: Optional start of the period, ISO date-time in server local time, e.g. '2026-11-24T20:00'

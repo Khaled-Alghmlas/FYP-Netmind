@@ -24,6 +24,7 @@ from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from typing import Optional
 
 import agent_core as core
 import backends
@@ -35,6 +36,7 @@ import health
 from collector import Collector
 from settings import Settings
 import device_control as dc
+import diagnosis
 import faults
 import network_scanner as ns
 from tool_catalog import registry
@@ -193,7 +195,32 @@ SIMULATED_PROMPT = (
     "You are NetMind, a network operations assistant for a SIMULATED lab network "
     "(built with containerlab). Use the provided tools to answer questions about "
     "device status, IPs, firewalls, and cameras, and to power devices on/off. "
-    "Be concise. For connectivity problems use the read-only diagnostic tools: ping_between "
+    "Be concise. To find the CAUSE of a problem (why can't X reach Y, what happened to X, why is X "
+    "slow or degraded) call diagnose_connectivity or diagnose_device FIRST: they run the checks in a "
+    "fixed order and return each step with ok true/false, sorted into 'symptoms' (what the user sees), "
+    "'likely_causes' and 'consequences' (effects of a cause, for example routes lost because a link is "
+    "down). Answer from that evidence only: give the likely cause(s) as THE answer, quote the check that "
+    "found it and say which device and interface it is on; mention consequences only as effects of that "
+    "cause, never as separate faults. Never add a cause that no check showed, and never link two facts "
+    "(for example a default password and a stopped stream) unless a check connects them. If no check "
+    "failed, say the checks found nothing wrong; if there is a symptom but no likely cause, say the cause "
+    "could not be confirmed. Do not guess. If the user describes the problem differently from what the "
+    "checks show (for example 'slow' when the device is unreachable), say what the checks actually show. "
+    "When several devices have problems at once, check whether they are in the same branch: if so, say "
+    "so and diagnose that branch's firewall and its link to r1 first, because one fault there explains them all. "
+    "To see who changed something recently, call get_recent_actions. "
+    "To FIX a problem, only use a tool that directly undoes the cause the checks found (for example "
+    "start_camera_stream for a stopped stream, power_on for a device that is off). You have no tool to "
+    "bring a link up, restore a route or remove a firewall rule you did not add: if that is the cause, "
+    "say so plainly and describe what an administrator must change. Never power a firewall or the router "
+    "off and on to fix a network problem: a restart removes its lab links (only hosts and cameras are "
+    "re-attached automatically), so it would cut the whole branch off. "
+    "When asked to FIX a problem: you have no tool that repairs a link, an address, a route or a traffic "
+    "impairment, so say exactly what needs repairing (device, interface, route) and that you cannot do it "
+    "yourself. Never offer to power a device off and on as a fix for a link, route, firewall or speed "
+    "problem: a power cycle removes a firewall's or router's lab links and cuts off the whole branch. "
+    "Powering a device on is the right fix only when the evidence shows it is powered off. "
+    "For other connectivity questions use the read-only diagnostic tools: ping_between "
     "and traceroute (does the path work, and where does it stop), get_routes (what the core "
     "router r1 knows) and get_interface_stats (errors and drops on a link). For questions about "
     "the past (\"what happened to the camera last night\", \"was host-ahmed down yesterday\") call "
@@ -562,6 +589,11 @@ def _collector_on():
     return COLLECTOR.running
 
 
+# The diagnosis playbooks read the monitor's view, the change history and the alerts (read-only).
+diagnosis.set_sources(health=lambda: COLLECTOR.tracker.snapshot(), actions=lambda: AUDIT_LOG.list(),
+                      alerts=_alerts_snapshot)
+
+
 def _track_real_status(devices):
     """Same idea for the real network: logs a device appearing for the first
     time in a scan, or dropping out of a scan it was previously seen in.
@@ -806,6 +838,20 @@ def api_fault_revert_all():
     alerts = _alerts_snapshot()
     return {"reverted": [_public_run(r, alerts) for r in results if not r.get("error")],
             "failed": [{"id": r["id"], "error": r["error"]} for r in results if r.get("error")]}
+
+
+class VerdictRequest(BaseModel):
+    verdict: Optional[str] = None   # correct | partly | wrong, or null to clear
+
+
+@router.post("/api/faults/{run_id}/verdict")
+def api_fault_verdict(run_id: str, req: VerdictRequest):
+    """Records whether the assistant's diagnosis of this fault was right (judged by a person)."""
+    try:
+        run = faults.set_verdict(run_id, req.verdict)
+    except faults.FaultError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return _public_run(run, _alerts_snapshot())
 
 
 @router.post("/api/faults/{run_id}/revert")
