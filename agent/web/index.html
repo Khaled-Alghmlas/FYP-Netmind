@@ -338,6 +338,23 @@ body[data-net-mode="real"] .sim-only { display: none; }
     background: none; color: var(--text); cursor: pointer; font-family: inherit; }
 .alert-ack:hover { border-color: var(--accent); color: var(--accent); }
 .alert-acked { margin-inline-start: 8px; font-size: 11px; color: var(--muted); }
+/* Scenarios page (issue #25) */
+.scenario-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.scenario-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.scenario-card h6 { margin: 0; font-size: 14px; font-weight: 600; }
+.scenario-card p { margin: 0; font-size: 12px; color: var(--muted); flex: 1; }
+.scenario-card .scenario-expect { font-size: 11px; color: var(--muted); }
+.scenario-row { display: flex; gap: 8px; align-items: center; }
+.scenario-row select { flex: 1; min-width: 0; padding: 4px 8px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg, transparent); color: var(--text); font-family: inherit; font-size: 12.5px; }
+.btn-danger-netmind { border: 1px solid #c0392b; color: #c0392b; background: none; border-radius: 8px; padding: 5px 12px;
+    font-size: 12.5px; cursor: pointer; font-family: inherit; }
+.btn-danger-netmind:hover { background: #c0392b; color: #fff; }
+.btn-danger-netmind:disabled, .btn-light-netmind:disabled { opacity: .5; cursor: default; }
+.run-ok { color: var(--success-text); font-weight: 500; }
+.run-miss { color: #c0392b; font-weight: 500; }
+.run-wait { color: #d39e00; font-weight: 500; }
+.scenario-msg { font-size: 12.5px; margin: 8px 0 0; }
 .alert-when { color: var(--muted); font-size: 11px; margin-top: 3px; }
 #chat-clear { align-self: flex-end; margin: 10px 16px 0; background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 20px; padding: 4px 12px; font-size: 12px; font-family: inherit; cursor: pointer; }
 #chat-clear:hover { color: var(--text); background: var(--panel); }
@@ -441,6 +458,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
     <nav class="sidebar-secondary">
         <a href="#" class="nav-link nav-primary" data-view="alerts" id="navAlerts" data-i18n="navAlerts">Alerts</a>
+        <a href="#" class="nav-link nav-primary" data-view="scenarios" id="navScenarios" data-i18n="navScenarios">Scenarios</a>
         <a href="#" class="nav-link nav-primary" data-view="reports" id="navReports" data-i18n="navReports">Reports</a>
     </nav>
 
@@ -610,6 +628,43 @@ body[data-net-mode="real"] .sim-only { display: none; }
         </section>
 
         <!-- ============================================================
+             SCENARIOS VIEW — break the lab on purpose and measure whether
+             NetMind notices (issue #25). Simulated lab only.
+             ============================================================ -->
+        <section id="scenariosView" style="display:none">
+            <div class="card-custom p-4 mb-3">
+                <div class="section-header">
+                    <div>
+                        <h5 data-i18n="scenariosTitle">Fault Scenarios</h5>
+                        <p data-i18n="scenariosSub">Each scenario breaks one thing in the lab and can be undone</p>
+                    </div>
+                    <button class="btn-danger-netmind" id="revert-all-btn" data-i18n="revertAll">Undo all faults</button>
+                </div>
+                <div class="scenario-msg" id="scenario-msg"></div>
+                <div class="scenario-grid" id="scenario-grid"></div>
+            </div>
+            <div class="card-custom p-4">
+                <div class="section-header">
+                    <div>
+                        <h5 data-i18n="runsTitle">Runs</h5>
+                        <p data-i18n="runsSub">Was each fault detected, and how fast</p>
+                    </div>
+                    <span class="accent fw-semibold" id="runs-summary"></span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table mb-0">
+                        <thead><tr>
+                            <th data-i18n="runScenario">Scenario</th><th data-i18n="runTarget">Target</th>
+                            <th data-i18n="runStarted">Started</th><th data-i18n="runState">State</th>
+                            <th data-i18n="runDetection">Detection</th><th data-i18n="runOther">Other alerts</th><th></th>
+                        </tr></thead>
+                        <tbody id="runs-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================
              REPORTS VIEW — one-page security and reliability summary
              ============================================================ -->
         <section id="reportsView" style="display:none">
@@ -716,6 +771,26 @@ body[data-net-mode="real"] .sim-only { display: none; }
             return fetchJson(Api.base + "/api/report");
         },
 
+        faults: function () {
+            return fetch(Api.base + "/api/faults").then(function (res) { return res.json(); });
+        },
+
+        injectFault: function (scenario, target) {
+            return fetch(Api.base + "/api/faults/inject", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ scenario: scenario, target: target })
+            }).then(function (res) { return res.json(); });
+        },
+
+        revertFault: function (id) {
+            return fetch(Api.base + "/api/faults/" + encodeURIComponent(id) + "/revert", { method: "POST" })
+                .then(function (res) { return res.json(); });
+        },
+
+        revertAllFaults: function () {
+            return fetch(Api.base + "/api/faults/revert-all", { method: "POST" }).then(function (res) { return res.json(); });
+        },
+
         ackAlert: function (id) {
             return fetch(Api.base + "/api/alerts/" + encodeURIComponent(id) + "/ack", { method: "POST" })
                 .then(function (res) { return res.json(); });
@@ -791,6 +866,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
         try { window.localStorage.setItem("netmind-net-mode", mode); } catch (e) {}
         renderChatIntro();
         Dashboard.refresh();
+        if (currentView === "scenarios") Scenarios.load();
     }
 
     function initNetMode() {
@@ -865,6 +941,15 @@ body[data-net-mode="real"] .sim-only { display: none; }
             outPending: "Awaiting confirmation", outConfirmed: "Confirmed & executed", outExecuted: "Executed",
             outCancelled: "Cancelled", outDenied: "Denied", outExpired: "Expired", outError: "Failed",
             reportsPageTitle: "Reports", reportsPageSub: "Security and reliability summary",
+            navScenarios: "Scenarios", scenariosPageTitle: "Scenarios", scenariosPageSub: "Fault injection and detection",
+            scenariosTitle: "Fault Scenarios", scenariosSub: "Each scenario breaks one thing in the lab and can be undone",
+            revertAll: "Undo all faults", injectBtn: "Break it", revertBtn: "Undo", runsTitle: "Runs",
+            runsSub: "Was each fault detected, and how fast", runScenario: "Scenario", runTarget: "Target",
+            runStarted: "Started", runState: "State", runDetection: "Detection", runOther: "Other alerts",
+            runActive: "Active", runReverted: "Undone", runWaiting: "Waiting…", runMissed: "Not detected",
+            runDetectedIn: "Detected in", noRuns: "No scenario has been run yet.", expectedLabel: "Expected:",
+            confirmInject: "Break the lab on purpose?", scenariosRealNote: "Scenarios only run on the simulated lab.",
+            detectedOf: "detected", secondsShort: "s",
             reportTitle: "Security & Reliability Report", reportPrint: "Print / Save as PDF",
             reportGenerated: "Generated", reportRealNote: "Reports are available in the simulated lab only.",
             repDevices: "Devices online", repOutages: "Outages", repAvgRecovery: "Avg. recovery", repLongest: "Longest outage",
@@ -952,6 +1037,15 @@ body[data-net-mode="real"] .sim-only { display: none; }
             outPending: "بانتظار التأكيد", outConfirmed: "تم التأكيد والتنفيذ", outExecuted: "تم التنفيذ",
             outCancelled: "أُلغي", outDenied: "مرفوض", outExpired: "انتهت صلاحيته", outError: "فشل",
             reportsPageTitle: "التقارير", reportsPageSub: "ملخص الأمان والاعتمادية",
+            navScenarios: "السيناريوهات", scenariosPageTitle: "السيناريوهات", scenariosPageSub: "افتعال الأعطال وقياس اكتشافها",
+            scenariosTitle: "سيناريوهات الأعطال", scenariosSub: "كل سيناريو يعطّل شيئاً واحداً في اللاب ويمكن التراجع عنه",
+            revertAll: "تراجع عن كل الأعطال", injectBtn: "افتعل العطل", revertBtn: "تراجع", runsTitle: "التجارب",
+            runsSub: "هل اكتُشف كل عطل، وبأي سرعة", runScenario: "السيناريو", runTarget: "الهدف",
+            runStarted: "البداية", runState: "الحالة", runDetection: "الاكتشاف", runOther: "تنبيهات أخرى",
+            runActive: "نشط", runReverted: "تم التراجع", runWaiting: "بانتظار…", runMissed: "لم يُكتشف",
+            runDetectedIn: "اكتُشف خلال", noRuns: "لم يُشغَّل أي سيناريو بعد.", expectedLabel: "المتوقع:",
+            confirmInject: "تعطيل اللاب عمداً؟", scenariosRealNote: "السيناريوهات تعمل على اللاب المحاكى فقط.",
+            detectedOf: "اكتُشف", secondsShort: "ث",
             reportTitle: "تقرير الأمان والاعتمادية", reportPrint: "طباعة / حفظ PDF",
             reportGenerated: "أُنشئ في", reportRealNote: "التقارير متاحة في شبكة المحاكاة فقط.",
             repDevices: "الأجهزة المتصلة", repOutages: "الانقطاعات", repAvgRecovery: "متوسط الاستعادة", repLongest: "أطول انقطاع",
@@ -1038,8 +1132,8 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
     function updatePageHeader() {
         var s = STRINGS[lang];
-        var titles = { chat: s.chatTitle, devices: s.devicesPageTitle, dashboard: s.dashboardTitle, logs: s.logsPageTitle, alerts: s.alertsPageTitle, reports: s.reportsPageTitle };
-        var subs = { chat: s.chatSub, devices: s.devicesPageSub, dashboard: s.dashboardSub, logs: s.logsPageSub, alerts: s.alertsPageSub, reports: s.reportsPageSub };
+        var titles = { chat: s.chatTitle, devices: s.devicesPageTitle, dashboard: s.dashboardTitle, logs: s.logsPageTitle, alerts: s.alertsPageTitle, reports: s.reportsPageTitle, scenarios: s.scenariosPageTitle };
+        var subs = { chat: s.chatSub, devices: s.devicesPageSub, dashboard: s.dashboardSub, logs: s.logsPageSub, alerts: s.alertsPageSub, reports: s.reportsPageSub, scenarios: s.scenariosPageSub };
         document.getElementById("pageTitle").textContent = titles[currentView] || s.dashboardTitle;
         document.getElementById("pageSubtitle").textContent = subs[currentView] || s.dashboardSub;
     }
@@ -1053,6 +1147,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
         document.getElementById("logsView").style.display = view === "logs" ? "" : "none";
         document.getElementById("alertsView").style.display = view === "alerts" ? "" : "none";
         document.getElementById("reportsView").style.display = view === "reports" ? "" : "none";
+        document.getElementById("scenariosView").style.display = view === "scenarios" ? "" : "none";
         document.getElementById("chatView").style.display = view === "chat" ? "" : "none";
 
         // Only the Overview section's links (.nav-primary) get the active
@@ -1069,6 +1164,8 @@ body[data-net-mode="real"] .sim-only { display: none; }
 
         if (view === "reports") {
             Reports.load();
+        } else if (view === "scenarios") {
+            Scenarios.load();
         } else if (view === "dashboard" || view === "devices" || view === "logs" || view === "alerts") {
             Dashboard.refresh();
         } else {
@@ -1867,6 +1964,7 @@ body[data-net-mode="real"] .sim-only { display: none; }
             this.renderDevicesGrid();
             this.renderAlertsView();
             Reports.render();
+            Scenarios.render();
             this.renderLogs();
         }
     };
@@ -1945,6 +2043,116 @@ body[data-net-mode="real"] .sim-only { display: none; }
     function safeRender() {
         try { Dashboard.renderAll(); } catch (err) { console.error("NetMind: render failed", err); }
     }
+
+    // ============================================================
+    // SCENARIOS (issue #25): inject a fault, watch whether NetMind
+    // notices, undo it. Detection is measured by the server from the
+    // alert history.
+    // ============================================================
+    var Scenarios = {
+        data: null,
+        targets: {},     // remembered target choice per scenario
+        load: function () {
+            if (netMode !== "simulated") { Scenarios.data = null; Scenarios.render(); return; }
+            Api.faults().then(function (d) { Scenarios.data = d; Scenarios.render(); })
+                .catch(function (err) { console.error("NetMind: faults failed", err); });
+        },
+        say: function (text, isError) {
+            var el = document.getElementById("scenario-msg");
+            el.textContent = text || "";
+            el.className = "scenario-msg" + (isError ? " run-miss" : "");
+        },
+        render: function () {
+            var grid = document.getElementById("scenario-grid"), body = document.getElementById("runs-body");
+            if (!grid) return;
+            var t = STRINGS[lang], d = Scenarios.data;
+            document.getElementById("revert-all-btn").disabled = netMode !== "simulated";
+            if (netMode !== "simulated" || !d) {
+                grid.innerHTML = '<div class="empty-note">' + (netMode !== "simulated" ? t.scenariosRealNote : "…") + "</div>";
+                body.innerHTML = "";
+                document.getElementById("runs-summary").textContent = "";
+                return;
+            }
+            if (d.error) Scenarios.say(d.error, true);
+            var active = {};
+            (d.runs || []).forEach(function (r) { if (r.status === "active") active[r.scenario + "|" + r.target] = r.id; });
+            grid.innerHTML = (d.scenarios || []).map(function (s) {
+                var chosen = Scenarios.targets[s.id] || s.targets[0] || "";
+                var options = s.targets.map(function (id) {
+                    return '<option value="' + escapeHtml(id) + '"' + (id === chosen ? " selected" : "") + ">" + escapeHtml(id) + "</option>";
+                }).join("");
+                var busy = active[s.id + "|" + chosen];
+                return '<div class="scenario-card"><h6>' + escapeHtml(lang === "ar" ? s.title_ar : s.title) + "</h6>" +
+                    "<p>" + escapeHtml(lang === "ar" ? s.description_ar : s.description) + "</p>" +
+                    '<div class="scenario-expect">' + t.expectedLabel + " " + escapeHtml(s.expected) + "</div>" +
+                    '<div class="scenario-row"><select data-scenario-target="' + escapeHtml(s.id) + '">' + options + "</select>" +
+                    (busy ? '<button class="btn-light-netmind" data-revert-run="' + escapeHtml(busy) + '">' + t.revertBtn + "</button>"
+                          : '<button class="btn-danger-netmind" data-inject="' + escapeHtml(s.id) + '"' + (s.targets.length ? "" : " disabled") + ">" + t.injectBtn + "</button>") +
+                    "</div></div>";
+            }).join("");
+
+            var titles = {};
+            (d.scenarios || []).forEach(function (s) { titles[s.id] = lang === "ar" ? s.title_ar : s.title; });
+            var runs = d.runs || [];
+            if (!runs.length) {
+                body.innerHTML = '<tr><td colspan="7" class="empty-note">' + t.noRuns + "</td></tr>";
+            } else {
+                body.innerHTML = runs.map(function (r) {
+                    var detection = r.detected ? '<span class="run-ok">✓ ' + t.runDetectedIn + " " + r.detection_seconds + " " + t.secondsShort + "</span>"
+                        : (r.status === "active" ? '<span class="run-wait">' + t.runWaiting + "</span>" : '<span class="run-miss">✗ ' + t.runMissed + "</span>");
+                    var state = r.status === "active" ? t.runActive : t.runReverted;
+                    var action = r.status === "active" ? '<button class="btn-light-netmind" data-revert-run="' + escapeHtml(r.id) + '">' + t.revertBtn + "</button>" : "";
+                    return "<tr><td>" + escapeHtml(titles[r.scenario] || r.title || r.scenario) + (r.error ? '<div class="run-miss" style="font-size:11px">' + escapeHtml(r.error) + "</div>" : "") +
+                        "</td><td>" + escapeHtml(r.target) + "</td><td>" + new Date(r.injected_at).toLocaleTimeString(lang === "ar" ? "ar-SA" : "en-US") +
+                        "</td><td>" + state + "</td><td>" + detection + "</td><td>" + ((r.other_alerts || []).length) + "</td><td>" + action + "</td></tr>";
+                }).join("");
+            }
+            var done = runs.filter(function (r) { return r.status !== "active"; });
+            var hit = done.filter(function (r) { return r.detected; });
+            document.getElementById("runs-summary").textContent = done.length ? hit.length + " / " + done.length + " " + t.detectedOf : "";
+        },
+        init: function () {
+            var grid = document.getElementById("scenario-grid");
+            grid.addEventListener("change", function (e) {
+                var sel = e.target.closest("[data-scenario-target]");
+                if (!sel) return;
+                Scenarios.targets[sel.getAttribute("data-scenario-target")] = sel.value;
+                Scenarios.render();
+            });
+            document.getElementById("scenariosView").addEventListener("click", function (e) {
+                var inj = e.target.closest("[data-inject]"), rev = e.target.closest("[data-revert-run]");
+                var t = STRINGS[lang];
+                if (inj) {
+                    var id = inj.getAttribute("data-inject");
+                    var sel = grid.querySelector('[data-scenario-target="' + id + '"]');
+                    var target = sel ? sel.value : "";
+                    if (!window.confirm(t.confirmInject + "\n" + id + " → " + target)) return;
+                    inj.disabled = true;
+                    Scenarios.say("…");
+                    Api.injectFault(id, target).then(function (r) {
+                        Scenarios.say(r.error || "", !!r.error);
+                        Scenarios.load();
+                    }).catch(function () { inj.disabled = false; });
+                } else if (rev) {
+                    rev.disabled = true;
+                    Api.revertFault(rev.getAttribute("data-revert-run")).then(function (r) {
+                        Scenarios.say(r.error || "", !!r.error);
+                        Scenarios.load();
+                    }).catch(function () { rev.disabled = false; });
+                }
+            });
+            document.getElementById("revert-all-btn").addEventListener("click", function (e) {
+                var btn = e.currentTarget;
+                btn.disabled = true;
+                Api.revertAllFaults().then(function (r) {
+                    var failed = (r.failed || []).map(function (f) { return f.id + ": " + f.error; }).join(" · ");
+                    Scenarios.say(failed, !!failed);
+                    btn.disabled = false;
+                    Scenarios.load();
+                }).catch(function () { btn.disabled = false; });
+            });
+        }
+    };
 
     var Reports = {
         data: null,
@@ -2139,15 +2347,20 @@ body[data-net-mode="real"] .sim-only { display: none; }
         initNetMode();   // also triggers the first Dashboard.refresh()
         applyLang();     // fills in all text, including dashboard/chat strings
 
+        Scenarios.init();
         showView("dashboard");
-        setInterval(function () { Dashboard.refresh(); }, POLL_INTERVAL_MS);
+        setInterval(function () { Dashboard.refresh(); if (currentView === "scenarios") Scenarios.load(); }, POLL_INTERVAL_MS);
 
         // Push updates (issue #19): the server says when alerts or device health change, so the
         // dashboard refreshes at once instead of at its next poll. The poll above stays as a fallback.
         if (window.EventSource) {
             try {
                 var events = new EventSource(Api.base + "/api/events");
-                events.addEventListener("update", function () { if (netMode !== "real") Dashboard.refresh(); });
+                events.addEventListener("update", function () {
+                    if (netMode === "real") return;
+                    Dashboard.refresh();
+                    if (currentView === "scenarios") Scenarios.load();
+                });
             } catch (e) {}
         }
     });

@@ -35,6 +35,7 @@ import health
 from collector import Collector
 from settings import Settings
 import device_control as dc
+import faults
 import network_scanner as ns
 from tool_catalog import registry
 
@@ -551,7 +552,8 @@ def _track_findings():
         _save_alerts()
 
 
-COLLECTOR = Collector(lambda: dc.sample_lab(ping=settings.collector_ping), _on_transitions,
+COLLECTOR = Collector(lambda: dc.sample_lab(ping=settings.collector_ping, lab_probe=settings.collector_lab_probe),
+                      _on_transitions,
                       interval=settings.collector_interval, confirm=settings.collector_confirm,
                       metrics=dc.lab_metrics)
 
@@ -755,6 +757,68 @@ def api_notify_test():
 
 class PowerRequest(BaseModel):
     state: str  # "on" or "off"
+
+
+class FaultRequest(BaseModel):
+    scenario: str
+    target: str
+
+
+# --- fault-injection scenarios (issue #25) --------------------------------------------------
+def _public_run(run, alerts):
+    """A fault run for the API: what to undo is internal (it can hold a camera password); the
+    detection result is computed from the alert history."""
+    shown = {k: v for k, v in run.items() if k != "revert_data"}
+    shown.update(faults.evaluate(run, alerts))
+    return shown
+
+
+@router.get("/api/faults")
+def api_faults():
+    """The scenarios that can be injected, and every run with its detection result."""
+    alerts = _alerts_snapshot()
+    try:
+        scenarios = faults.scenarios()
+    except (OSError, ValueError) as e:   # no registry.json yet: the lab was never deployed
+        return {"scenarios": [], "runs": [], "error": f"lab not available: {e}"}
+    return {"scenarios": scenarios, "runs": [_public_run(r, alerts) for r in faults.runs()]}
+
+
+@router.post("/api/faults/inject")
+def api_fault_inject(req: FaultRequest):
+    try:
+        run = faults.inject(req.scenario, req.target)
+    except faults.FaultError as e:
+        AUDIT_LOG.record("scenarios", "inject_fault", req.model_dump(), str(e), "error")
+        return JSONResponse({"error": str(e)}, status_code=400)
+    AUDIT_LOG.record("scenarios", "inject_fault", req.model_dump(), run["id"], "executed")
+    dc._invalidate_dashboard_cache()
+    _bump_events()
+    return _public_run(run, _alerts_snapshot())
+
+
+@router.post("/api/faults/revert-all")
+def api_fault_revert_all():
+    results = faults.revert_all()
+    AUDIT_LOG.record("scenarios", "revert_all_faults", {}, [r["id"] for r in results], "executed")
+    dc._invalidate_dashboard_cache()
+    _bump_events()
+    alerts = _alerts_snapshot()
+    return {"reverted": [_public_run(r, alerts) for r in results if not r.get("error")],
+            "failed": [{"id": r["id"], "error": r["error"]} for r in results if r.get("error")]}
+
+
+@router.post("/api/faults/{run_id}/revert")
+def api_fault_revert(run_id: str):
+    try:
+        run = faults.revert(run_id)
+    except faults.FaultError as e:
+        AUDIT_LOG.record("scenarios", "revert_fault", {"run": run_id}, str(e), "error")
+        return JSONResponse({"error": str(e)}, status_code=400)
+    AUDIT_LOG.record("scenarios", "revert_fault", {"run": run_id}, run["status"], "executed")
+    dc._invalidate_dashboard_cache()
+    _bump_events()
+    return _public_run(run, _alerts_snapshot())
 
 
 @router.get("/api/devices")

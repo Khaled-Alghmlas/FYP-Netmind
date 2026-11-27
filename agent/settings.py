@@ -21,6 +21,7 @@ class Settings(BaseModel):
     collector_interval: float = 5.0
     collector_confirm: int = 2
     collector_ping: bool = True
+    collector_lab_probe: bool = True
 
     @classmethod
     def from_env(cls, env=None):
@@ -34,6 +35,8 @@ class Settings(BaseModel):
             values["database_path"] = Path(env["NETMIND_DB"])
         if env.get("NETMIND_COLLECTOR"):
             values["collector_enabled"] = env["NETMIND_COLLECTOR"].strip().lower() not in ("0", "false", "no", "off")
+        if env.get("NETMIND_COLLECT_LAB"):
+            values["collector_lab_probe"] = env["NETMIND_COLLECT_LAB"].strip().lower() not in ("0", "false", "no", "off")
         if env.get("NETMIND_COLLECT_PING"):
             values["collector_ping"] = env["NETMIND_COLLECT_PING"].strip().lower() not in ("0", "false", "no", "off")
         try:

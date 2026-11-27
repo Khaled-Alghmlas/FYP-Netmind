@@ -10,6 +10,9 @@ A sample has these keys (all optional except `container`):
     stream     cameras only: True if the camera answered GET /snapshot, False if it did not
     reachable  True/False if the device answered a ping on its management address
     cpu, mem   CPU and memory use in percent, when metrics are being collected
+    lab_reachable, lab_loss, lab_rtt, lab_stream
+               the same checks made over the lab network itself (from the router r1, through
+               the branch firewall), which is what link, route, latency and firewall faults break
 
 Debounce: a device only changes state after `confirm` samples in a row agree on the new state,
 so one slow answer never raises an alert. Deduplication follows from the same rule: an alert is
@@ -21,6 +24,8 @@ UP, DEGRADED, DOWN = "up", "degraded", "down"
 PROTECTED_TYPES = ("router", "firewall")
 CPU_LIMIT = 90.0   # percent; sustained use above this marks a device degraded
 MEM_LIMIT = 90.0
+LOSS_LIMIT = 20.0      # percent of the lab-network pings lost
+LATENCY_LIMIT = 200.0  # ms, average lab-network round trip (normally well under 1 ms)
 
 
 def classify(device_type, sample):
@@ -33,6 +38,15 @@ def classify(device_type, sample):
         return DEGRADED, "camera stream is not answering"
     if sample.get("reachable") is False:
         return DEGRADED, "not answering ping"
+    if sample.get("lab_reachable") is False:
+        return DEGRADED, "not reachable over the lab network"
+    loss, rtt = sample.get("lab_loss"), sample.get("lab_rtt")
+    if loss is not None and loss >= LOSS_LIMIT:
+        return DEGRADED, f"{loss:.0f}% packet loss on the lab network"
+    if rtt is not None and rtt >= LATENCY_LIMIT:
+        return DEGRADED, f"high latency on the lab network ({rtt:.0f} ms)"
+    if device_type == "camera" and sample.get("lab_stream") is False:
+        return DEGRADED, "camera stream blocked on the lab network"
     cpu, mem = sample.get("cpu"), sample.get("mem")
     if cpu is not None and cpu >= CPU_LIMIT:
         return DEGRADED, f"CPU at {cpu:.0f}%"

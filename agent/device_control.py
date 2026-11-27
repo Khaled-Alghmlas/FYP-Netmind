@@ -8,6 +8,7 @@ agent tools, the dashboard and the tests call: each function dumps the service's
 Docker is reached lazily, so this module can be imported on a machine with no Docker.
 """
 import json
+import re
 import subprocess
 import threading
 import time
@@ -277,12 +278,83 @@ def _ping_ok(ip):
         return None
 
 
-def sample_lab(ping=True):
+# Lab-network probe (issue #25): the checks above use the management network, which a broken lab
+# link, a bad route or a firewall rule does not touch. So, every round, the router r1 also pings
+# each running device's lab address (and asks each camera for a snapshot) through the real lab
+# path: r1 -> branch firewall -> device. One `docker exec` runs all of them in parallel.
+LAB_PROBE_PINGS = 3
+_PROBE_SUMMARY = re.compile(r"(\d+) packets transmitted, (\d+) (?:packets )?received")
+_PROBE_RTT = re.compile(r"=\s*[\d.]+/([\d.]+)/")
+
+
+def _lab_probe_script(ping_ips, camera_ips):
+    pings = " ".join(ping_ips)
+    cams = " ".join(camera_ips)
+    return ("cd /tmp && rm -f nmp_* nmw_*; "
+            f"for ip in {pings}; do (ping -c {LAB_PROBE_PINGS} -w {LAB_PROBE_PINGS} -q $ip > nmp_$ip 2>&1) & done; "
+            f"for ip in {cams}; do (wget -q -T 2 -O /dev/null http://$ip:{CAMERA_PORT}/snapshot "
+            "&& echo ok > nmw_$ip || echo fail > nmw_$ip) & done; "
+            "wait; for f in nmp_* nmw_*; do [ -f \"$f\" ] && echo \"== $f\" && cat \"$f\"; done; rm -f nmp_* nmw_*")
+
+
+def _parse_lab_probe(text):
+    """Probe output -> {ip: {"lab_reachable", "lab_loss", "lab_rtt"}} and {ip: stream_ok}."""
+    pings, streams, current, kind = {}, {}, None, None
+    for line in text.splitlines():
+        if line.startswith("== nmp_"):
+            current, kind = line[7:].strip(), "ping"
+            pings[current] = {"lab_reachable": False, "lab_loss": 100.0}
+        elif line.startswith("== nmw_"):
+            current, kind = line[7:].strip(), "wget"
+        elif current and kind == "ping":
+            m = _PROBE_SUMMARY.search(line)
+            if m:
+                sent, received = int(m.group(1)), int(m.group(2))
+                pings[current] = {"lab_reachable": received > 0,
+                                  "lab_loss": round(100.0 * (sent - received) / sent, 1) if sent else 100.0}
+            m = _PROBE_RTT.search(line)
+            if m:
+                pings[current]["lab_rtt"] = float(m.group(1))
+        elif current and kind == "wget" and line.strip() in ("ok", "fail"):
+            streams[current] = line.strip() == "ok"
+    return pings, streams
+
+
+def _lab_probe(registry, containers, statuses):
+    """Runs the lab-network probe from the router. Returns {device_id: {lab_* fields}}, or {}
+    if the router is not running or cannot run it (then nothing is concluded from it)."""
+    router = next((d for d in registry if d["type"] == "router"), None)
+    if router is None or statuses.get(router["id"]) != "running":
+        return {}
+    targets = [d for d in registry if d["id"] != router["id"] and d.get("network_ip")
+               and statuses.get(d["id"]) == "running"]
+    if not targets:
+        return {}
+    by_ip = {d["network_ip"]: d for d in targets}
+    cams = [d["network_ip"] for d in targets if d["type"] == "camera"]
+    try:
+        code, out = containers[router["container"]].exec_run(["sh", "-c", _lab_probe_script(list(by_ip), cams)])
+    except Exception:
+        return {}
+    pings, streams = _parse_lab_probe(out.decode(errors="replace") if isinstance(out, (bytes, bytearray)) else str(out))
+    if not pings:   # the router could not run ping at all: no evidence either way
+        return {}
+    result = {}
+    for ip, dev in by_ip.items():
+        fields = dict(pings.get(ip, {}))
+        if ip in streams:
+            fields["lab_stream"] = streams[ip]
+        if fields:
+            result[dev["id"]] = fields
+    return result
+
+
+def sample_lab(ping=True, lab_probe=True):
     """One health sample per registry device, for the collector: container status (one Docker
     listing for all), plus, for running devices, whether a camera's stream answers and whether
-    hosts and cameras answer a ping. The network checks run in parallel. Raises if Docker or the
-    registry cannot be read, so the collector keeps the last known states instead of marking
-    every device down."""
+    hosts and cameras answer a ping, and the lab-network probe from the router. The network
+    checks run in parallel. Raises if Docker or the registry cannot be read, so the collector
+    keeps the last known states instead of marking every device down."""
     registry = _load_registry()
     containers = {c.name: c for c in _client.containers.list(all=True)}
     samples, checks = [], []
@@ -296,11 +368,17 @@ def sample_lab(ping=True):
             checks.append((sample, "stream", _snapshot_ok, f"http://{d['ip']}:{CAMERA_PORT}/snapshot"))
         if ping and d["type"] in PING_TYPES and d.get("ip"):
             checks.append((sample, "reachable", _ping_ok, d["ip"]))
+    if lab_probe:
+        statuses = {d["id"]: s["container"] for d, s in samples}
+        checks.append((None, "lab", lambda _: _lab_probe(registry, containers, statuses), None))
     if checks:
         with ThreadPoolExecutor(max_workers=min(16, len(checks))) as pool:
             results = list(pool.map(lambda check: check[2](check[3]), checks))
         for (sample, key, _fn, _arg), ok in zip(checks, results):
-            if ok is not None:
+            if key == "lab":
+                for d, s in samples:
+                    s.update(ok.get(d["id"], {}))
+            elif ok is not None:
                 sample[key] = bool(ok)
     return samples
 

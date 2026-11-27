@@ -75,8 +75,10 @@ class Collector:
 
     def _loop(self, work, every):
         while not self._stop.is_set():
+            started = time.monotonic()
             work()
-            self._stop.wait(every)
+            # every `every` seconds from start to start, so a slow round does not stretch the cycle
+            self._stop.wait(max(0.0, every - (time.monotonic() - started)))
 
     def start(self):
         if self.running:
